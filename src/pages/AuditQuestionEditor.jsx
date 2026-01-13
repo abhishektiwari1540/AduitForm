@@ -109,8 +109,9 @@ export default function AuditQuestionEditor() {
   const API_BASE_URL =
     process.env.REACT_APP_BACKEND_URL || "http://localhost:5000/api/";
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
- const unitId  = useParams().id;
+  const unitId = useParams().id;
   const [unitDetails, setUnitDetails] = useState({
     unitName: "",
     address: "",
@@ -206,10 +207,10 @@ export default function AuditQuestionEditor() {
     pageId: null,
     sectionId: null,
     questionId: null,
-    questionText: ""
+    questionText: "",
   });
 
-   const colorPalette = [
+  const colorPalette = [
     { hex: "#13855f", class: "yes", title: "Green (Yes/Good)" },
     { hex: "#ef4444", class: "no", title: "Red (No/Poor)" },
     { hex: "#a0aec0", class: "na", title: "Gray (N/A)" },
@@ -231,9 +232,27 @@ export default function AuditQuestionEditor() {
       id: "yes-no-na",
       name: "Yes/No/N/A",
       responses: [
-        { text: "Yes", class: "yes", score: "1", flagged: false, colorHex: "#13855f" },
-        { text: "No", class: "no", score: "0", flagged: true, colorHex: "#ef4444" },
-        { text: "N/A", class: "na", score: "/", flagged: false, colorHex: "#a0aec0" },
+        {
+          text: "Yes",
+          class: "yes",
+          score: "1",
+          flagged: false,
+          colorHex: "#13855f",
+        },
+        {
+          text: "No",
+          class: "no",
+          score: "0",
+          flagged: true,
+          colorHex: "#ef4444",
+        },
+        {
+          text: "N/A",
+          class: "na",
+          score: "/",
+          flagged: false,
+          colorHex: "#a0aec0",
+        },
       ],
       isPredefined: true,
     },
@@ -241,9 +260,27 @@ export default function AuditQuestionEditor() {
       id: "good-fair-poor",
       name: "Good/Fair/Poor",
       responses: [
-        { text: "Good", class: "good", score: "1", flagged: false, colorHex: "#13855f" },
-        { text: "Fair", class: "fair", score: "0.5", flagged: false, colorHex: "#f59e0b" },
-        { text: "Poor", class: "poor", score: "0", flagged: true, colorHex: "#ef4444" },
+        {
+          text: "Good",
+          class: "good",
+          score: "1",
+          flagged: false,
+          colorHex: "#13855f",
+        },
+        {
+          text: "Fair",
+          class: "fair",
+          score: "0.5",
+          flagged: false,
+          colorHex: "#f59e0b",
+        },
+        {
+          text: "Poor",
+          class: "poor",
+          score: "0",
+          flagged: true,
+          colorHex: "#ef4444",
+        },
       ],
       isPredefined: true,
     },
@@ -281,7 +318,10 @@ export default function AuditQuestionEditor() {
   // Handle saving multiple choice responses
   const saveMultipleChoiceResponses = async (questionId, responses) => {
     try {
-      const result = await multipleChoiceService.saveMultipleChoiceResponses(questionId, responses);
+      const result = await multipleChoiceService.saveMultipleChoiceResponses(
+        questionId,
+        responses
+      );
       console.log("Responses saved successfully:", result);
       return true;
     } catch (error) {
@@ -308,10 +348,10 @@ export default function AuditQuestionEditor() {
         newGlobalSetName,
         editingResponses
       );
-      
+
       // Refresh global sets
       await fetchGlobalResponseSets();
-      
+
       setShowSaveAsGlobalModal(false);
       setNewGlobalSetName("");
       alert("Response set saved successfully!");
@@ -327,7 +367,7 @@ export default function AuditQuestionEditor() {
       await multipleChoiceService.updateGlobalResponseSet(setId, {
         responses: editingResponses,
       });
-      
+
       await fetchGlobalResponseSets();
       setEditingGlobalSetId(null);
       alert("Response set updated successfully!");
@@ -340,7 +380,7 @@ export default function AuditQuestionEditor() {
   // Handle deleting a global response set
   const handleDeleteGlobalSet = async (setId, e) => {
     e.stopPropagation();
-    
+
     if (!window.confirm("Are you sure you want to delete this response set?")) {
       return;
     }
@@ -356,7 +396,7 @@ export default function AuditQuestionEditor() {
   };
 
   // Filter global response sets based on search query
-  const filteredGlobalSets = globalResponseSets.filter(set =>
+  const filteredGlobalSets = globalResponseSets.filter((set) =>
     set.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -364,14 +404,21 @@ export default function AuditQuestionEditor() {
   const allResponseSets = [...predefinedResponseSets, ...filteredGlobalSets];
 
   // Open edit modal with question data
-  const openEditModal = (pageId, sectionId, questionId, questionText, existingResponses = [], globalSetId = null) => {
+  const openEditModal = (
+    pageId,
+    sectionId,
+    questionId,
+    questionText,
+    existingResponses = [],
+    globalSetId = null
+  ) => {
     setCurrentQuestionData({
       pageId,
       sectionId,
       questionId,
-      questionText
+      questionText,
     });
-    
+
     // Set editing responses - use existing ones or create empty array
     if (existingResponses && existingResponses.length > 0) {
       setEditingResponses(existingResponses);
@@ -386,7 +433,7 @@ export default function AuditQuestionEditor() {
         },
       ]);
     }
-    
+
     setEditingGlobalSetId(globalSetId);
     setIsEditModalOpen(true);
   };
@@ -403,30 +450,32 @@ export default function AuditQuestionEditor() {
     const { pageId, sectionId, questionId } = currentQuestionData;
 
     // Save to backend first
-    const success = await saveMultipleChoiceResponses(questionId, validResponses);
-    
+    const success = await saveMultipleChoiceResponses(
+      questionId,
+      validResponses
+    );
+
     if (success) {
       // Update local state
       updateQuestion(pageId, sectionId, questionId, {
         responses: validResponses,
       });
-      
+
       // If we were editing a global set, update it
       if (editingGlobalSetId) {
         await handleUpdateGlobalSet(editingGlobalSetId);
       }
-      
+
       setIsEditModalOpen(false);
       setEditingGlobalSetId(null);
       setCurrentQuestionData({
         pageId: null,
         sectionId: null,
         questionId: null,
-        questionText: ""
+        questionText: "",
       });
     }
   };
-
 
   useEffect(() => {
     const styleElement = document.createElement("style");
@@ -441,45 +490,58 @@ export default function AuditQuestionEditor() {
     fetchUnitData();
   }, []);
 
-  const fetchUnitData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+ const fetchUnitData = async () => {
+  try {
+    setLoading(true);
+    setError(null);
 
-      const response = await axios.get(`${API_BASE_URL}units/${unitId}`);
-      const unitData = response.data;
-      console.log("Fetched Unit Data:", unitData?.data);
+    const response = await axios.get(`${API_BASE_URL}audit-templates/${unitId}`);
+    const templateData = response.data.data;
+    
+    console.log("Fetched Audit Template Data:", templateData);
+    
+    // Check if data exists and has the expected structure
+    if (templateData) {
       // Map API data to your unitDetails state
       setUnitDetails({
-        companyName: unitData?.data?.company_name || "",
-        representativeName: unitData?.data?.representative_name || "",
-        address: unitData?.data?.complete_address || "",
-        contactNumber: unitData?.data?.contact_number || "",
-        email: unitData?.data?.email || "",
-        scheduledManday: unitData?.data?.scheduled_manday || "",
-        auditScope: unitData?.data?.audit_scope || "",
-        auditDateFrom: unitData?.data?.audit_date_from
-          ? formatDateForInput(unitData.data?.audit_date_from)
+        companyName: templateData?.unitDetails?.company_name || templateData?.company_name || "",
+        representativeName: templateData?.unitDetails?.representative_name || templateData?.representative_name || "",
+        address: templateData?.unitDetails?.complete_address || templateData?.complete_address || "",
+        contactNumber: templateData?.unitDetails?.contact_number || templateData?.contact_number || "",
+        email: templateData?.unitDetails?.email || templateData?.email || "",
+        scheduledManday: templateData?.unitDetails?.scheduled_manday || templateData?.scheduled_manday || "",
+        auditScope: templateData?.unitDetails?.audit_scope || templateData?.audit_scope || "",
+        auditDateFrom: templateData?.unitDetails?.audit_date_from || templateData?.audit_date_from
+          ? formatDateForInput(templateData?.unitDetails?.audit_date_from || templateData?.audit_date_from)
           : "",
-        auditDateTo: unitData?.data?.audit_date_to
-          ? formatDateForInput(unitData.data?.audit_date_to)
+        auditDateTo: templateData?.unitDetails?.audit_date_to || templateData?.audit_date_to
+          ? formatDateForInput(templateData?.unitDetails?.audit_date_to || templateData?.audit_date_to)
           : "",
-        coordinates: unitData?.data?.geotag_location || "",
-        auditStartTime: unitData?.data?.audit_start_time || "",
+        coordinates: templateData?.unitDetails?.geotag_location || templateData?.geotag_location || "",
       });
-      console.log("Unit Details:", unitDetails); // Debugging line
-
-      // If auditStartTime exists and is in the past, set auditStarted to true
-      if (unitData.auditStartTime) {
+      
+      // Load template pages
+      if (templateData.pages && Array.isArray(templateData.pages)) {
+        setPages(templateData.pages);
+      } else if (templateData.data?.pages && Array.isArray(templateData.data.pages)) {
+        setPages(templateData.data.pages);
+      }
+      
+      // Set audit start time if available
+      if (templateData.audit_start_time) {
+        setAuditStartTime(templateData.audit_start_time);
         setAuditStarted(true);
       }
-    } catch (err) {
-      console.error("Error fetching unit data:", err);
-      setError("Failed to load unit data. Please try again.");
-    } finally {
-      setLoading(false);
     }
-  };
+    
+  } catch (err) {
+    console.error("Error fetching audit template:", err);
+    setError("Failed to load audit template. Please try again.");
+  } finally {
+    setLoading(false);
+  }
+};
+  
   const formatDateForInput = (dateString) => {
     if (!dateString) return "";
     const date = new Date(dateString);
@@ -519,11 +581,98 @@ export default function AuditQuestionEditor() {
     top: 0,
     left: 0,
   });
+  
+  // Save/Update functionality
+const handleSaveOrUpdate = async () => {
+  try {
+    setSaving(true);
+    
+    // Prepare the complete data object
+    const dataToSave = {
+      unit_details: {
+        company_name: unitDetails.companyName,
+        representative_name: unitDetails.representativeName,
+        complete_address: unitDetails.address,
+        contact_number: unitDetails.contactNumber,
+        email: unitDetails.email,
+        scheduled_manday: unitDetails.scheduledManday,
+        audit_scope: unitDetails.auditScope,
+        audit_date_from: unitDetails.auditDateFrom,
+        audit_date_to: unitDetails.auditDateTo,
+        geotag_location: unitDetails.coordinates,
+      },
+      template_data: {
+        pages: pages,
+        last_updated: new Date().toISOString(),
+        version: '1.0'
+      },
+      audit_started: auditStarted,
+      audit_start_time: auditStartTime
+    };
+
+    let response;
+    let apiUrl;
+    
+    if (unitId) {
+      // Update existing template
+      apiUrl = `${API_BASE_URL}audit-templates/${unitId}`;
+      response = await axios.put(apiUrl, dataToSave);
+      alert("Audit template updated successfully!");
+    } else {
+      // Create new template
+      apiUrl = `${API_BASE_URL}audit-templates/create`;
+      response = await axios.post(apiUrl, dataToSave);
+      
+      // Get the new template ID from response
+      const newTemplateId = response.data.data.templateId;
+      alert(`Audit template saved successfully! Template ID: ${newTemplateId}`);
+      
+      // You can redirect to the edit page with the new ID
+      // history.push(`/audit-editor/${newTemplateId}`);
+    }
+    
+    console.log("Save/Update response:", response.data);
+    
+    // Update last saved time
+    const now = new Date();
+    setLastSaved(now.toLocaleTimeString());
+    
+  } catch (error) {
+    console.error("Error saving data:", error);
+    alert(`Failed to save data: ${error.response?.data?.message || error.message}`);
+  } finally {
+    setSaving(false);
+  }
+};
+
+
+
+
+  // Handle export data (for debugging or backup)
+  const handleExportData = () => {
+    const dataToExport = {
+      unitDetails,
+      pages,
+      exportDate: new Date().toISOString(),
+    };
+    
+    const dataStr = JSON.stringify(dataToExport, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = `audit-template-${new Date().getTime()}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  };
+
   useEffect(() => {
     if (isEditModalOpen) {
       console.log("Modal is now open");
     }
   }, [isEditModalOpen]);
+  
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
@@ -540,6 +689,7 @@ export default function AuditQuestionEditor() {
       document.removeEventListener("click", handleClickOutside);
     };
   }, [activeColorPickerIndex]);
+  
   // Auto-save functionality
   const saveTimeout = useRef();
 
@@ -558,20 +708,6 @@ export default function AuditQuestionEditor() {
   useEffect(() => {
     debouncedSave();
   }, [unitDetails, pages, debouncedSave]);
-
-  // Load data on mount
-  // useEffect(() => {
-  //   const saved = localStorage.getItem("auditEditorData");
-  //   if (saved) {
-  //     try {
-  //       const data = JSON.parse(saved);
-  //       if (data.unitDetails) setUnitDetails(data.unitDetails);
-  //       if (data.pages) setPages(data.pages);
-  //     } catch (e) {
-  //       console.error("Failed to load saved data", e);
-  //     }
-  //   }
-  // }, []);
 
   const getLocation = () => {
     if (navigator.geolocation) {
@@ -728,7 +864,7 @@ export default function AuditQuestionEditor() {
     );
   };
 
-   const updateQuestion = async (pageId, sectionId, questionId, updates) => {
+  const updateQuestion = async (pageId, sectionId, questionId, updates) => {
     setPages((prev) =>
       prev.map((page) => {
         if (page.id === pageId) {
@@ -798,6 +934,7 @@ export default function AuditQuestionEditor() {
       )
     );
   };
+  
   const addLogicRule = (pageId, sectionId, qId) => {
     const question = pages
       .find((p) => p.id === pageId)
@@ -887,6 +1024,7 @@ export default function AuditQuestionEditor() {
       triggers: rule.triggers.filter((t) => t.id !== triggerId),
     });
   };
+  
   const handleTriggerSave = (config) => {
     const { questionId, ruleId, triggerId } = logicModalState;
     if (!questionId || !ruleId || !triggerId) return;
@@ -956,6 +1094,7 @@ export default function AuditQuestionEditor() {
   const handleLogicConfig = (type) => {
     setLogicConfigType(type);
   };
+  
   const handleSaveEvidenceConfig = (config) => {
     // Add logic rule to the question
     const rule = {
@@ -1042,6 +1181,7 @@ export default function AuditQuestionEditor() {
     setShowLogicConfig(false);
     setLogicConfigType(null);
   };
+  
   useEffect(() => {
     const handleScroll = () => {
       if (scoringPanelState.isOpen) {
@@ -1123,7 +1263,6 @@ export default function AuditQuestionEditor() {
       position: { top: 0, left: 0 },
     });
   };
-
 
   const renderResponseSetsSection = (question, pageId, sectionId) => (
     <div
@@ -1223,11 +1362,15 @@ export default function AuditQuestionEditor() {
         }}
       >
         {loadingGlobalSets ? (
-          <li style={{ padding: "20px", textAlign: "center", color: "#6b7280" }}>
+          <li
+            style={{ padding: "20px", textAlign: "center", color: "#6b7280" }}
+          >
             Loading response sets...
           </li>
         ) : allResponseSets.length === 0 ? (
-          <li style={{ padding: "20px", textAlign: "center", color: "#6b7280" }}>
+          <li
+            style={{ padding: "20px", textAlign: "center", color: "#6b7280" }}
+          >
             No response sets found. Click "Add responses" to create one.
           </li>
         ) : (
@@ -1297,7 +1440,7 @@ export default function AuditQuestionEditor() {
                     +{set.responses.length - 3} more
                   </span>
                 )}
-                
+
                 {set.isPredefined ? (
                   <span
                     className="global-set-badge"
@@ -1334,7 +1477,7 @@ export default function AuditQuestionEditor() {
                   </span>
                 )}
               </div>
-              
+
               <div style={{ display: "flex", gap: "5px" }}>
                 <button
                   className="edit-btn"
@@ -1342,10 +1485,23 @@ export default function AuditQuestionEditor() {
                     e.stopPropagation();
                     if (set.isPredefined) {
                       // For predefined sets, create a copy to edit
-                      openEditModal(pageId, sectionId, question.id, question.text, set.responses);
+                      openEditModal(
+                        pageId,
+                        sectionId,
+                        question.id,
+                        question.text,
+                        set.responses
+                      );
                     } else {
                       // For global sets, edit the actual set
-                      openEditModal(pageId, sectionId, question.id, question.text, set.responses, set.id);
+                      openEditModal(
+                        pageId,
+                        sectionId,
+                        question.id,
+                        question.text,
+                        set.responses,
+                        set.id
+                      );
                     }
                     setActiveDropdownId(null);
                   }}
@@ -1361,7 +1517,7 @@ export default function AuditQuestionEditor() {
                 >
                   <FaEdit />
                 </button>
-                
+
                 {!set.isPredefined && (
                   <button
                     className="delete-btn"
@@ -1426,8 +1582,7 @@ export default function AuditQuestionEditor() {
     </div>
   );
 
-
-    const renderMultipleChoiceEditorModal = () => (
+  const renderMultipleChoiceEditorModal = () =>
     isEditModalOpen && (
       <div
         className="multiple-choice-editor-modal modal-overlay"
@@ -1456,7 +1611,7 @@ export default function AuditQuestionEditor() {
               pageId: null,
               sectionId: null,
               questionId: null,
-              questionText: ""
+              questionText: "",
             });
           }
         }}
@@ -1498,14 +1653,27 @@ export default function AuditQuestionEditor() {
                 flexBasis: "100%",
               }}
             >
-              {editingGlobalSetId ? "Edit Global Response Set" : "Multiple choice responses"}
+              {editingGlobalSetId
+                ? "Edit Global Response Set"
+                : "Multiple choice responses"}
               {editingGlobalSetId && (
-                <span style={{ fontSize: "0.9rem", color: "#6b7280", marginLeft: "10px" }}>
-                  (Editing: {globalResponseSets.find(s => s.id === editingGlobalSetId)?.name})
+                <span
+                  style={{
+                    fontSize: "0.9rem",
+                    color: "#6b7280",
+                    marginLeft: "10px",
+                  }}
+                >
+                  (Editing:{" "}
+                  {
+                    globalResponseSets.find((s) => s.id === editingGlobalSetId)
+                      ?.name
+                  }
+                  )
                 </span>
               )}
             </h2>
-            
+
             <span
               className="example-text"
               id="editorExampleText"
@@ -1516,11 +1684,15 @@ export default function AuditQuestionEditor() {
                 flexGrow: 1,
               }}
             >
-              {currentQuestionData.questionText ? 
-                `For: "${currentQuestionData.questionText.substring(0, 30)}${currentQuestionData.questionText.length > 30 ? '...' : ''}"` : 
-                editingGlobalSetId ? "Edit this global response set" : "e.g. New Option Set"}
+              {currentQuestionData.questionText
+                ? `For: "${currentQuestionData.questionText.substring(0, 30)}${
+                    currentQuestionData.questionText.length > 30 ? "..." : ""
+                  }"`
+                : editingGlobalSetId
+                ? "Edit this global response set"
+                : "e.g. New Option Set"}
             </span>
-            
+
             <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
               {!editingGlobalSetId && (
                 <button
@@ -1542,7 +1714,7 @@ export default function AuditQuestionEditor() {
                   <FaGlobe /> Save as Global
                 </button>
               )}
-              
+
               <label
                 className="scoring-checkbox-label"
                 style={{
@@ -1572,15 +1744,15 @@ export default function AuditQuestionEditor() {
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    backgroundColor: isScoringEnabled ? "#6d28d9" : "transparent",
+                    backgroundColor: isScoringEnabled
+                      ? "#6d28d9"
+                      : "transparent",
                     position: "relative",
                     transition: "background-color 0.2s, border-color 0.2s",
                   }}
                 >
                   {isScoringEnabled && (
-                    <span style={{ fontSize: "12px", color: "white" }}>
-                      ✔
-                    </span>
+                    <span style={{ fontSize: "12px", color: "white" }}>✔</span>
                   )}
                 </span>
                 Scoring
@@ -1611,7 +1783,7 @@ export default function AuditQuestionEditor() {
             >
               Response
             </div>
-            
+
             <ul
               className="editor-response-list"
               id="editorResponseListContainer"
@@ -1664,7 +1836,7 @@ export default function AuditQuestionEditor() {
                       <span>⋮</span>
                       <span>⋮</span>
                     </div>
-                    
+
                     {/* Response Content */}
                     <div
                       style={{
@@ -1718,7 +1890,8 @@ export default function AuditQuestionEditor() {
                             className="color-indicator"
                             onClick={(e) => {
                               e.stopPropagation();
-                              const buttonRect = e.currentTarget.getBoundingClientRect();
+                              const buttonRect =
+                                e.currentTarget.getBoundingClientRect();
                               setActiveColorPickerIndex(index);
                               setColorPickerPosition({
                                 top: buttonRect.bottom,
@@ -1755,7 +1928,7 @@ export default function AuditQuestionEditor() {
                           </div>
                         </div>
                       </div>
-                      
+
                       <div
                         className="response-sub-controls"
                         style={{
@@ -1799,22 +1972,29 @@ export default function AuditQuestionEditor() {
                               display: "inline-flex",
                               alignItems: "center",
                               justifyContent: "center",
-                              backgroundColor: response.flagged ? "#6d28d9" : "transparent",
+                              backgroundColor: response.flagged
+                                ? "#6d28d9"
+                                : "transparent",
                               position: "relative",
                             }}
                           >
                             {response.flagged && (
-                              <span style={{ fontSize: "10px", color: "white" }}>
+                              <span
+                                style={{ fontSize: "10px", color: "white" }}
+                              >
                                 ✔
                               </span>
                             )}
                           </span>
                           Mark as flagged
                         </label>
-                        
+
                         {isScoringEnabled && (
                           <>
-                            <span className="sub-control-divider" style={{ color: "#cbd5e0" }}>
+                            <span
+                              className="sub-control-divider"
+                              style={{ color: "#cbd5e0" }}
+                            >
                               |
                             </span>
                             <label
@@ -1851,11 +2031,13 @@ export default function AuditQuestionEditor() {
                         )}
                       </div>
                     </div>
-                    
+
                     {/* Delete Button */}
                     <button
                       onClick={() => {
-                        const newResponses = editingResponses.filter((_, i) => i !== index);
+                        const newResponses = editingResponses.filter(
+                          (_, i) => i !== index
+                        );
                         setEditingResponses(newResponses);
                         if (activeColorPickerIndex === index) {
                           setActiveColorPickerIndex(null);
@@ -1886,7 +2068,7 @@ export default function AuditQuestionEditor() {
                 ))
               )}
             </ul>
-            
+
             {/* Add Response Button */}
             <button
               className="add-response-button"
@@ -1955,7 +2137,7 @@ export default function AuditQuestionEditor() {
               >
                 {editingGlobalSetId ? "Update Set" : "Save and apply"}
               </button>
-              
+
               {editingGlobalSetId && (
                 <button
                   className="btn-save-as-new"
@@ -1978,7 +2160,7 @@ export default function AuditQuestionEditor() {
                 </button>
               )}
             </div>
-            
+
             <button
               className="btn-cancel"
               id="editorCancelBtn"
@@ -1990,7 +2172,7 @@ export default function AuditQuestionEditor() {
                   pageId: null,
                   sectionId: null,
                   questionId: null,
-                  questionText: ""
+                  questionText: "",
                 });
               }}
               style={{
@@ -2041,16 +2223,22 @@ export default function AuditQuestionEditor() {
                     borderRadius: "4px",
                     border: "1px solid #e5e7eb",
                     marginRight: "10px",
-                    backgroundColor: editingResponses[activeColorPickerIndex]?.colorHex || "#6b7280",
+                    backgroundColor:
+                      editingResponses[activeColorPickerIndex]?.colorHex ||
+                      "#6b7280",
                   }}
                 />
                 <input
                   type="text"
                   className="color-picker-hex-input"
-                  value={editingResponses[activeColorPickerIndex]?.colorHex || "#6b7280"}
+                  value={
+                    editingResponses[activeColorPickerIndex]?.colorHex ||
+                    "#6b7280"
+                  }
                   onChange={(e) => {
                     const newResponses = [...editingResponses];
-                    newResponses[activeColorPickerIndex].colorHex = e.target.value;
+                    newResponses[activeColorPickerIndex].colorHex =
+                      e.target.value;
                     setEditingResponses(newResponses);
                   }}
                   style={{
@@ -2064,7 +2252,7 @@ export default function AuditQuestionEditor() {
                   maxLength="7"
                 />
               </div>
-              
+
               <div
                 className="color-picker-grid"
                 style={{
@@ -2077,7 +2265,8 @@ export default function AuditQuestionEditor() {
                   <div
                     key={`color-${idx}-${color.hex}`}
                     className={`color-picker-swatch ${
-                      editingResponses[activeColorPickerIndex]?.colorHex === color.hex
+                      editingResponses[activeColorPickerIndex]?.colorHex ===
+                      color.hex
                         ? "selected"
                         : ""
                     }`}
@@ -2094,7 +2283,8 @@ export default function AuditQuestionEditor() {
                       borderRadius: "4px",
                       cursor: "pointer",
                       border:
-                        editingResponses[activeColorPickerIndex]?.colorHex === color.hex
+                        editingResponses[activeColorPickerIndex]?.colorHex ===
+                        color.hex
                           ? "2px solid #6d28d9"
                           : "2px solid transparent",
                       boxSizing: "border-box",
@@ -2104,8 +2294,11 @@ export default function AuditQuestionEditor() {
                       backgroundColor: color.hex,
                     }}
                   >
-                    {editingResponses[activeColorPickerIndex]?.colorHex === color.hex && (
-                      <FaCheck style={{ color: "#6d28d9", fontSize: "0.8em" }} />
+                    {editingResponses[activeColorPickerIndex]?.colorHex ===
+                      color.hex && (
+                      <FaCheck
+                        style={{ color: "#6d28d9", fontSize: "0.8em" }}
+                      />
                     )}
                   </div>
                 ))}
@@ -2114,11 +2307,9 @@ export default function AuditQuestionEditor() {
           )}
         </div>
       </div>
-    )
-  );
+    );
 
-
-  const renderSaveAsGlobalModal = () => (
+  const renderSaveAsGlobalModal = () =>
     showSaveAsGlobalModal && (
       <div
         style={{
@@ -2151,15 +2342,27 @@ export default function AuditQuestionEditor() {
             boxShadow: "0 5px 20px rgba(0, 0, 0, 0.2)",
           }}
         >
-          <h2 style={{ margin: "0 0 15px 0", fontSize: "1.2rem", color: "#333" }}>
+          <h2
+            style={{ margin: "0 0 15px 0", fontSize: "1.2rem", color: "#333" }}
+          >
             Save as Global Response Set
           </h2>
-          <p style={{ margin: "0 0 20px 0", color: "#666", fontSize: "0.9rem" }}>
-            Give a name to this response set so you can use it across multiple templates.
+          <p
+            style={{ margin: "0 0 20px 0", color: "#666", fontSize: "0.9rem" }}
+          >
+            Give a name to this response set so you can use it across multiple
+            templates.
           </p>
-          
+
           <div style={{ marginBottom: "20px" }}>
-            <label style={{ display: "block", marginBottom: "8px", fontWeight: "500", color: "#555" }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "8px",
+                fontWeight: "500",
+                color: "#555",
+              }}
+            >
               Set Name
             </label>
             <input
@@ -2176,8 +2379,10 @@ export default function AuditQuestionEditor() {
               }}
             />
           </div>
-          
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+
+          <div
+            style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}
+          >
             <button
               onClick={() => {
                 setShowSaveAsGlobalModal(false);
@@ -2214,8 +2419,8 @@ export default function AuditQuestionEditor() {
           </div>
         </div>
       </div>
-    )
-  );
+    );
+    
   // Handle click outside to close panel
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -2233,6 +2438,7 @@ export default function AuditQuestionEditor() {
       document.removeEventListener("click", handleClickOutside);
     };
   }, [scoringPanelState.isOpen]);
+  
   return (
     <div
       style={{
@@ -2251,6 +2457,97 @@ export default function AuditQuestionEditor() {
           paddingBottom: "50px",
         }}
       >
+        {/* Header with Save/Update buttons */}
+        <div
+          style={{
+            backgroundColor: "#ffffff",
+            border: "1px solid #ced4da",
+            borderRadius: "10px",
+            marginBottom: "30px",
+            boxShadow: "0 5px 15px rgba(0,0,0,0.1)",
+            padding: "15px 20px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <h1
+              style={{
+                fontSize: "1.5rem",
+                fontWeight: "700",
+                color: "#6e42ff",
+                margin: 0,
+              }}
+            >
+              Audit Template Editor
+            </h1>
+            <p style={{ margin: "5px 0 0 0", color: "#666", fontSize: "0.9rem" }}>
+              {unitId ? `Editing Unit: ${unitId}` : "Creating New Audit Template"}
+              <span style={{ marginLeft: "15px", color: "#28a745" }}>
+                Last saved: {lastSaved}
+              </span>
+            </p>
+          </div>
+          
+          <div style={{ display: "flex", gap: "10px" }}>
+            {/* <button
+              onClick={handleExportData}
+              style={{
+                padding: "10px 20px",
+                backgroundColor: "transparent",
+                color: "#6e42ff",
+                border: "1px solid #6e42ff",
+                borderRadius: "6px",
+                fontSize: "0.95rem",
+                fontWeight: "500",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+              title="Export template data"
+            >
+              <FaFileAlt /> Export
+            </button> */}
+            
+            <button
+              onClick={handleSaveOrUpdate}
+              disabled={saving}
+              style={{
+                padding: "10px 25px",
+                backgroundColor: saving ? "#999" : "#28a745",
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+                fontSize: "0.95rem",
+                fontWeight: "500",
+                cursor: saving ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                minWidth: "120px",
+                justifyContent: "center",
+              }}
+            >
+              {saving ? (
+                <>
+                  <FaSyncAlt style={{ animation: "spin 1s linear infinite" }} />
+                  Saving...
+                </>
+              ) : unitId ? (
+                <>
+                  <FaSave /> Update
+                </>
+              ) : (
+                <>
+                  <FaSave /> Save Template
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
         {/* Unit Details Form */}
         <div
           style={{
@@ -3395,7 +3692,11 @@ export default function AuditQuestionEditor() {
                                     }}
                                   >
                                     {/* Left Card - Multiple Choice */}
-                                            {renderResponseSetsSection(question, page.id, section.id)}
+                                    {renderResponseSetsSection(
+                                      question,
+                                      page.id,
+                                      section.id
+                                    )}
                                     {/* Right Card - Single Response Types */}
                                     <div
                                       style={{
@@ -5315,723 +5616,723 @@ export default function AuditQuestionEditor() {
           </div>
         ))}
 
-            {isEditModalOpen && (
+        {isEditModalOpen && (
+          <div
+            className="multiple-choice-editor-modal modal-overlay"
+            id="multipleChoiceEditorModal"
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              zIndex: 1000,
+            }}
+            onClick={(e) => {
+              if (
+                e.target.className.includes("multiple-choice-editor-modal") ||
+                e.target.className.includes("modal-overlay")
+              ) {
+                setIsEditModalOpen(false);
+                setActiveColorPickerIndex(null);
+              }
+            }}
+          >
+            <div
+              className="modal-content"
+              style={{
+                backgroundColor: "white",
+                borderRadius: "8px",
+                padding: "25px 30px",
+                width: "520px",
+                maxWidth: "90%",
+                maxHeight: "85vh",
+                boxShadow: "0 5px 20px rgba(0, 0, 0, 0.2)",
+                display: "flex",
+                flexDirection: "column",
+                zIndex: 1100,
+                position: "relative",
+              }}
+            >
               <div
-                className="multiple-choice-editor-modal modal-overlay"
-                id="multipleChoiceEditorModal"
+                className="modal-header"
                 style={{
-                  position: "fixed",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  height: "100%",
-                  backgroundColor: "rgba(0, 0, 0, 0.5)",
                   display: "flex",
-                  justifyContent: "center",
+                  flexWrap: "wrap",
                   alignItems: "center",
-                  zIndex: 1000,
+                  marginBottom: "20px",
+                  borderBottom: "1px solid #e5e7eb",
+                  paddingBottom: "15px",
                 }}
-                onClick={(e) => {
-                  if (
-                    e.target.className.includes("multiple-choice-editor-modal") ||
-                    e.target.className.includes("modal-overlay")
-                  ) {
-                    setIsEditModalOpen(false);
-                    setActiveColorPickerIndex(null);
-                  }
+              >
+                <h2
+                  style={{
+                    fontSize: "1.4rem",
+                    fontWeight: "600",
+                    color: "#2d3748",
+                    margin: 0,
+                    flexBasis: "100%",
+                  }}
+                >
+                  Multiple choice responses
+                </h2>
+                <span
+                  className="example-text"
+                  id="editorExampleText"
+                  style={{
+                    fontSize: "0.9rem",
+                    color: "#718096",
+                    marginTop: "5px",
+                    flexGrow: 1,
+                  }}
+                >
+                  e.g. New Option Set
+                </span>
+                <label
+                  className="scoring-checkbox-label"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    cursor: "pointer",
+                    fontSize: "0.9rem",
+                    color: "#4a5568",
+                    fontWeight: "500",
+                    marginLeft: "auto",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    id="editorScoringCheckbox"
+                    checked={isScoringEnabled}
+                    onChange={(e) => setIsScoringEnabled(e.target.checked)}
+                    style={{ display: "none" }}
+                  />
+                  <span
+                    className="custom-checkbox-editor"
+                    style={{
+                      width: "18px",
+                      height: "18px",
+                      border: "2px solid #a0aec0",
+                      borderRadius: "4px",
+                      marginRight: "8px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: isScoringEnabled
+                        ? "#6d28d9"
+                        : "transparent",
+                      position: "relative",
+                      transition: "background-color 0.2s, border-color 0.2s",
+                    }}
+                  >
+                    {isScoringEnabled && (
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          color: "white",
+                        }}
+                      >
+                        ✔
+                      </span>
+                    )}
+                  </span>
+                  Scoring
+                </label>
+              </div>
+
+              <div
+                className="modal-body"
+                style={{
+                  flexGrow: 1,
+                  overflowY: "auto",
+                  marginBottom: "20px",
+                  position: "relative",
                 }}
               >
                 <div
-                  className="modal-content"
+                  className="response-list-header"
                   style={{
-                    backgroundColor: "white",
-                    borderRadius: "8px",
-                    padding: "25px 30px",
-                    width: "520px",
-                    maxWidth: "90%",
-                    maxHeight: "85vh",
-                    boxShadow: "0 5px 20px rgba(0, 0, 0, 0.2)",
-                    display: "flex",
-                    flexDirection: "column",
-                    zIndex: 1100,
-                    position: "relative",
+                    fontSize: "0.75rem",
+                    color: "#a0aec0",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    marginBottom: "10px",
+                    paddingLeft: "35px",
                   }}
                 >
-                  <div
-                    className="modal-header"
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                      marginBottom: "20px",
-                      borderBottom: "1px solid #e5e7eb",
-                      paddingBottom: "15px",
-                    }}
-                  >
-                    <h2
+                  Response
+                </div>
+                <ul
+                  className="editor-response-list"
+                  id="editorResponseListContainer"
+                  style={{
+                    listStyle: "none",
+                    padding: 0,
+                    margin: 0,
+                  }}
+                >
+                  {editingResponses.length === 0 ? (
+                    <li
                       style={{
-                        fontSize: "1.4rem",
-                        fontWeight: "600",
-                        color: "#2d3748",
-                        margin: 0,
-                        flexBasis: "100%",
-                      }}
-                    >
-                      Multiple choice responses 
-                    </h2>
-                    <span
-                      className="example-text"
-                      id="editorExampleText"
-                      style={{
-                        fontSize: "0.9rem",
+                        padding: "20px 0",
+                        textAlign: "center",
                         color: "#718096",
-                        marginTop: "5px",
-                        flexGrow: 1,
+                        fontStyle: "italic",
                       }}
                     >
-                      e.g. New Option Set
-                    </span>
-                    <label
-                      className="scoring-checkbox-label"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        cursor: "pointer",
-                        fontSize: "0.9rem",
-                        color: "#4a5568",
-                        fontWeight: "500",
-                        marginLeft: "auto",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        id="editorScoringCheckbox"
-                        checked={isScoringEnabled}
-                        onChange={(e) => setIsScoringEnabled(e.target.checked)}
-                        style={{ display: "none" }}
-                      />
-                      <span
-                        className="custom-checkbox-editor"
-                        style={{
-                          width: "18px",
-                          height: "18px",
-                          border: "2px solid #a0aec0",
-                          borderRadius: "4px",
-                          marginRight: "8px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: isScoringEnabled
-                            ? "#6d28d9"
-                            : "transparent",
-                          position: "relative",
-                          transition: "background-color 0.2s, border-color 0.2s",
-                        }}
-                      >
-                        {isScoringEnabled && (
-                          <span
-                            style={{
-                              fontSize: "12px",
-                              color: "white",
-                            }}
-                          >
-                            ✔
-                          </span>
-                        )}
-                      </span>
-                      Scoring
-                    </label>
-                  </div>
-
-                  <div
-                    className="modal-body"
-                    style={{
-                      flexGrow: 1,
-                      overflowY: "auto",
-                      marginBottom: "20px",
-                      position: "relative",
-                    }}
-                  >
-                    <div
-                      className="response-list-header"
-                      style={{
-                        fontSize: "0.75rem",
-                        color: "#a0aec0",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                        marginBottom: "10px",
-                        paddingLeft: "35px",
-                      }}
-                    >
-                      Response
-                    </div>
-                    <ul
-                      className="editor-response-list"
-                      id="editorResponseListContainer"
-                      style={{
-                        listStyle: "none",
-                        padding: 0,
-                        margin: 0,
-                      }}
-                    >
-                      {editingResponses.length === 0 ? (
-                        <li
-                          style={{
-                            padding: "20px 0",
-                            textAlign: "center",
-                            color: "#718096",
-                            fontStyle: "italic",
-                          }}
-                        >
-                          No responses added yet. Click "Add Response" to get
-                          started.
-                        </li>
-                      ) : (
-                        editingResponses.map((response, index) => (
-                          <li
-                            key={`response-${index}-${response.text}`}
-                            className="editor-response-item"
-                            style={{
-                              display: "flex",
-                              padding: "10px 0",
-                              borderBottom: "1px solid #edf2f7",
-                              cursor: "default",
-                              alignItems: "flex-start",
-                            }}
-                          >
-                            <div
-                              className="drag-handle"
-                              style={{
-                                fontSize: "1rem",
-                                color: "#cbd5e0",
-                                cursor: "grab",
-                                marginRight: "15px",
-                                display: "flex",
-                                flexDirection: "column",
-                                lineHeight: "0.3",
-                                alignSelf: "flex-start",
-                                marginTop: "20px",
-                                padding: "5px",
-                              }}
-                            >
-                              <span>⋮</span>
-                              <span>⋮</span>
-                            </div>
-                            <div
-                              style={{
-                                flexGrow: 1,
-                                display: "flex",
-                                flexDirection: "column",
-                              }}
-                            >
-                              <div
-                                className="item-main-edit-row"
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  width: "100%",
-                                }}
-                              >
-                                <div
-                                  className="response-input-wrapper-editing"
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    border: "1px solid #6d28d9",
-                                    borderRadius: "6px",
-                                    padding: "8px 10px",
-                                    marginBottom: "10px",
-                                    flexGrow: 1,
-                                    backgroundColor: "#f9fafb",
-                                  }}
-                                >
-                                  <input
-                                    type="text"
-                                    value={response.text}
-                                    onChange={(e) => {
-                                      const newResponses = [...editingResponses];
-                                      newResponses[index].text = e.target.value;
-                                      setEditingResponses(newResponses);
-                                    }}
-                                    className="response-text-input-editing"
-                                    style={{
-                                      flexGrow: 1,
-                                      border: "none",
-                                      outline: "none",
-                                      fontSize: "0.95rem",
-                                      color: "#2d3748",
-                                      backgroundColor: "transparent",
-                                      padding: "4px 0",
-                                    }}
-                                    placeholder="Response text"
-                                  />
-                                  <div
-                                    className="color-indicator"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      const buttonRect =
-                                        e.currentTarget.getBoundingClientRect();
-                                      setActiveColorPickerIndex(index);
-                                      setColorPickerPosition({
-                                        top: buttonRect.bottom,
-                                        left: buttonRect.left,
-                                      });
-                                    }}
-                                    style={{
-                                      width: "24px",
-                                      height: "24px",
-                                      borderRadius: "50%",
-                                      backgroundColor: response.colorHex,
-                                      cursor: "pointer",
-                                      marginLeft: "10px",
-                                      border: "2px solid #fff",
-                                      boxShadow: "0 0 0 1px #d1d5db",
-                                      flexShrink: 0,
-                                    }}
-                                    title="Change color"
-                                  />
-                                </div>
-                              </div>
-                              <div
-                                className="response-sub-controls"
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "10px",
-                                  paddingLeft: "0",
-                                  marginTop: "8px",
-                                  width: "100%",
-                                  boxSizing: "border-box",
-                                }}
-                              >
-                                <label
-                                  className="sub-control-checkbox-label"
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    cursor: "pointer",
-                                    fontSize: "0.85rem",
-                                    color: "#4a5568",
-                                  }}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={response.flagged}
-                                    onChange={(e) => {
-                                      const newResponses = [...editingResponses];
-                                      newResponses[index].flagged =
-                                        e.target.checked;
-                                      setEditingResponses(newResponses);
-                                    }}
-                                    style={{
-                                      display: "none",
-                                    }}
-                                  />
-                                  <span
-                                    className="custom-sub-checkbox"
-                                    style={{
-                                      width: "16px",
-                                      height: "16px",
-                                      border: "1.5px solid #a0aec0",
-                                      borderRadius: "3px",
-                                      marginRight: "6px",
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      backgroundColor: response.flagged
-                                        ? "#6d28d9"
-                                        : "transparent",
-                                      position: "relative",
-                                    }}
-                                  >
-                                    {response.flagged && (
-                                      <span
-                                        style={{
-                                          fontSize: "10px",
-                                          color: "white",
-                                        }}
-                                      >
-                                        ✔
-                                      </span>
-                                    )}
-                                  </span>
-                                  Mark as flagged
-                                </label>
-                                {isScoringEnabled && (
-                                  <>
-                                    <span
-                                      className="sub-control-divider"
-                                      style={{
-                                        color: "#cbd5e0",
-                                      }}
-                                    >
-                                      |
-                                    </span>
-                                    <label
-                                      className="sub-control-score-label"
-                                      style={{
-                                        fontSize: "0.85rem",
-                                        color: "#4a5568",
-                                        display: "flex",
-                                        alignItems: "center",
-                                      }}
-                                    >
-                                      Score
-                                      <input
-                                        type="number"
-                                        value={response.score}
-                                        onChange={(e) => {
-                                          const newResponses = [
-                                            ...editingResponses,
-                                          ];
-                                          newResponses[index].score =
-                                            e.target.value;
-                                          setEditingResponses(newResponses);
-                                        }}
-                                        className="sub-control-score-input"
-                                        style={{
-                                          width: "40px",
-                                          padding: "4px 6px",
-                                          border: "1px solid #cbd5e0",
-                                          borderRadius: "4px",
-                                          fontSize: "0.85rem",
-                                          marginLeft: "5px",
-                                          textAlign: "center",
-                                        }}
-                                      />
-                                    </label>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                            {/* DELETE BUTTON AT FAR RIGHT OF ROW */}
-                            <button
-                              onClick={() => {
-                                const newResponses = editingResponses.filter(
-                                  (_, i) => i !== index
-                                );
-                                setEditingResponses(newResponses);
-                                if (activeColorPickerIndex === index) {
-                                  setActiveColorPickerIndex(null);
-                                }
-                              }}
-                              style={{
-                                background: "none",
-                                border: "none",
-                                color: "#dc3545",
-                                fontSize: "1.2rem",
-                                cursor: "pointer",
-                                padding: "8px",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                width: "36px",
-                                height: "36px",
-                                borderRadius: "4px",
-                                transition: "all 0.2s",
-                                alignSelf: "flex-start",
-                                marginLeft: "10px",
-                              }}
-                              title="Delete this response"
-                            >
-                              <FaTrashAlt />
-                            </button>
-                          </li>
-                        ))
-                      )}
-                    </ul>
-                    <button
-                      className="add-response-button"
-                      id="editorAddResponseBtn"
-                      onClick={() => {
-                        setEditingResponses([
-                          ...editingResponses,
-                          {
-                            text: "",
-                            class: "",
-                            score: "0",
-                            flagged: false,
-                            colorHex: "#6b7280",
-                          },
-                        ]);
-                      }}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "#6d28d9",
-                        fontSize: "0.9rem",
-                        fontWeight: "500",
-                        cursor: "pointer",
-                        padding: "10px 0",
-                        marginTop: "10px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "8px",
-                      }}
-                    >
-                      <span className="plus-icon" style={{ fontSize: "1.1rem" }}>
-                        +
-                      </span>
-                      Add Response
-                    </button>
-                  </div>
-
-                  <div
-                    className="modal-footer"
-                    style={{
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      gap: "10px",
-                      paddingTop: "20px",
-                      borderTop: "1px solid #e5e7eb",
-                      marginTop: "10px",
-                    }}
-                  >
-                    <button
-                      className="btn-save-apply"
-                      id="editorSaveApplyBtn"
-                      onClick={() => {
-                        // Validate responses
-                        const validResponses = editingResponses.filter(
-                          (r) => r.text.trim() !== ""
-                        );
-                        if (validResponses.length === 0) {
-                          alert("Please add at least one response");
-                          return;
-                        }
-
-                        // Update the question with new responses
-                        updateQuestion(page.id, section.id, question.id, {
-                          responses: validResponses,
-                        });
-                        setIsEditModalOpen(false);
-                      }}
-                      style={{
-                        padding: "10px 20px",
-                        backgroundColor: "#6d28d9",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "6px",
-                        fontSize: "14px",
-                        fontWeight: "500",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Save and apply
-                    </button>
-                    <button
-                      className="btn-cancel"
-                      id="editorCancelBtn"
-                      onClick={() => {
-                        setIsEditModalOpen(false);
-                        setActiveColorPickerIndex(null);
-                      }}
-                      style={{
-                        padding: "10px 20px",
-                        backgroundColor: "transparent",
-                        color: "#6b7280",
-                        border: "1px solid #d1d5db",
-                        borderRadius: "6px",
-                        fontSize: "14px",
-                        fontWeight: "500",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-
-                  {/* Color Picker Popup */}
-                  {activeColorPickerIndex !== null && (
-                    <div
-                      className="color-picker-popup"
-                      style={{
-                        position: "absolute",
-                        top: "201px",
-                        right: "0px",
-                        backgroundColor: "white",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "8px",
-                        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-                        padding: "15px",
-                        zIndex: 1200,
-                        width: "230px",
-                      }}
-                    >
-                      <div
-                        className="color-picker-header"
+                      No responses added yet. Click "Add Response" to get
+                      started.
+                    </li>
+                  ) : (
+                    editingResponses.map((response, index) => (
+                      <li
+                        key={`response-${index}-${response.text}`}
+                        className="editor-response-item"
                         style={{
                           display: "flex",
-                          alignItems: "center",
-                          marginBottom: "12px",
+                          padding: "10px 0",
+                          borderBottom: "1px solid #edf2f7",
+                          cursor: "default",
+                          alignItems: "flex-start",
                         }}
                       >
                         <div
-                          className="color-picker-preview-swatch"
+                          className="drag-handle"
                           style={{
-                            width: "28px",
-                            height: "28px",
-                            borderRadius: "4px",
-                            border: "1px solid #e5e7eb",
-                            marginRight: "10px",
-                            backgroundColor:
-                              editingResponses[activeColorPickerIndex]?.colorHex ||
-                              "#6b7280",
+                            fontSize: "1rem",
+                            color: "#cbd5e0",
+                            cursor: "grab",
+                            marginRight: "15px",
+                            display: "flex",
+                            flexDirection: "column",
+                            lineHeight: "0.3",
+                            alignSelf: "flex-start",
+                            marginTop: "20px",
+                            padding: "5px",
                           }}
-                        ></div>
-                        <input
-                          type="text"
-                          className="color-picker-hex-input"
-                          value={
-                            editingResponses[activeColorPickerIndex]?.colorHex ||
-                            "#6b7280"
-                          }
-                          onChange={(e) => {
-                            const newResponses = [...editingResponses];
-                            newResponses[activeColorPickerIndex].colorHex =
-                              e.target.value;
-                            setEditingResponses(newResponses);
-                          }}
+                        >
+                          <span>⋮</span>
+                          <span>⋮</span>
+                        </div>
+                        <div
                           style={{
                             flexGrow: 1,
-                            padding: "6px 8px",
-                            border: "1px solid #e5e7eb",
-                            borderRadius: "4px",
-                            fontSize: "0.85rem",
-                            outline: "none",
+                            display: "flex",
+                            flexDirection: "column",
                           }}
-                          maxLength="7"
-                        />
-                      </div>
-                      <div
-                        className="color-picker-grid"
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(6, 1fr)",
-                          gap: "8px",
-                        }}
-                      >
-                        {[
-                          {
-                            hex: "#13855f",
-                            class: "yes",
-                            title: "Green (Yes/Good)",
-                          },
-                          {
-                            hex: "#ef4444",
-                            class: "no",
-                            title: "Red (No/Poor)",
-                          },
-                          {
-                            hex: "#a0aec0",
-                            class: "na",
-                            title: "Gray (N/A)",
-                          },
-                          {
-                            hex: "#f59e0b",
-                            class: "fair",
-                            title: "Yellow (Fair)",
-                          },
-                          {
-                            hex: "#6e42ff",
-                            class: "primary",
-                            title: "Purple (Primary)",
-                          },
-                          {
-                            hex: "#f0eefe",
-                            class: "light-purple",
-                            title: "Light Purple BG",
-                          },
-                          {
-                            hex: "#ffedd5",
-                            class: "custom-orange",
-                            title: "Orange",
-                          },
-                          {
-                            hex: "#fef9c3",
-                            class: "custom-light-yellow",
-                            title: "Light Yellow",
-                          },
-                          {
-                            hex: "#dbeafe",
-                            class: "custom-light-blue",
-                            title: "Light Blue",
-                          },
-                          {
-                            hex: "#dcfce7",
-                            class: "custom-light-green",
-                            title: "Light Green",
-                          },
-                          {
-                            hex: "#ccfbf1",
-                            class: "custom-teal",
-                            title: "Teal",
-                          },
-                          {
-                            hex: "#e0f2fe",
-                            class: "custom-sky-blue",
-                            title: "Sky Blue",
-                          },
-                          {
-                            hex: "#e0e7ff",
-                            class: "custom-indigo",
-                            title: "Indigo",
-                          },
-                          // Removed duplicate #a0aec0 entry
-                        ].map((color, idx) => (
+                        >
                           <div
-                            key={`color-${idx}-${color.hex}`}
-                            className={`color-picker-grid-swatch ${
-                              editingResponses[activeColorPickerIndex]?.colorHex ===
-                              color.hex
-                                ? "selected"
-                                : ""
-                            }`}
-                            title={color.title}
-                            onClick={() => {
-                              const newResponses = [...editingResponses];
-                              newResponses[activeColorPickerIndex].colorHex =
-                                color.hex;
-                              newResponses[activeColorPickerIndex].class =
-                                color.class;
-                              setEditingResponses(newResponses);
-                            }}
+                            className="item-main-edit-row"
                             style={{
-                              width: "26px",
-                              height: "26px",
-                              borderRadius: "4px",
-                              cursor: "pointer",
-                              border:
-                                editingResponses[activeColorPickerIndex]
-                                  ?.colorHex === color.hex
-                                  ? "2px solid #6d28d9"
-                                  : "2px solid transparent",
-                              boxSizing: "border-box",
                               display: "flex",
                               alignItems: "center",
-                              justifyContent: "center",
-                              backgroundColor: color.hex,
+                              width: "100%",
                             }}
                           >
-                            {editingResponses[activeColorPickerIndex]?.colorHex ===
-                              color.hex && (
-                              <i
-                                className="fas fa-check"
-                                style={{
-                                  color: "#6d28d9",
-                                  fontSize: "0.8em",
+                            <div
+                              className="response-input-wrapper-editing"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                border: "1px solid #6d28d9",
+                                borderRadius: "6px",
+                                padding: "8px 10px",
+                                marginBottom: "10px",
+                                flexGrow: 1,
+                                backgroundColor: "#f9fafb",
+                              }}
+                            >
+                              <input
+                                type="text"
+                                value={response.text}
+                                onChange={(e) => {
+                                  const newResponses = [...editingResponses];
+                                  newResponses[index].text = e.target.value;
+                                  setEditingResponses(newResponses);
                                 }}
-                              ></i>
+                                className="response-text-input-editing"
+                                style={{
+                                  flexGrow: 1,
+                                  border: "none",
+                                  outline: "none",
+                                  fontSize: "0.95rem",
+                                  color: "#2d3748",
+                                  backgroundColor: "transparent",
+                                  padding: "4px 0",
+                                }}
+                                placeholder="Response text"
+                              />
+                              <div
+                                className="color-indicator"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const buttonRect =
+                                    e.currentTarget.getBoundingClientRect();
+                                  setActiveColorPickerIndex(index);
+                                  setColorPickerPosition({
+                                    top: buttonRect.bottom,
+                                    left: buttonRect.left,
+                                  });
+                                }}
+                                style={{
+                                  width: "24px",
+                                  height: "24px",
+                                  borderRadius: "50%",
+                                  backgroundColor: response.colorHex,
+                                  cursor: "pointer",
+                                  marginLeft: "10px",
+                                  border: "2px solid #fff",
+                                  boxShadow: "0 0 0 1px #d1d5db",
+                                  flexShrink: 0,
+                                }}
+                                title="Change color"
+                              />
+                            </div>
+                          </div>
+                          <div
+                            className="response-sub-controls"
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                              paddingLeft: "0",
+                              marginTop: "8px",
+                              width: "100%",
+                              boxSizing: "border-box",
+                            }}
+                          >
+                            <label
+                              className="sub-control-checkbox-label"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                cursor: "pointer",
+                                fontSize: "0.85rem",
+                                color: "#4a5568",
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={response.flagged}
+                                onChange={(e) => {
+                                  const newResponses = [...editingResponses];
+                                  newResponses[index].flagged =
+                                    e.target.checked;
+                                  setEditingResponses(newResponses);
+                                }}
+                                style={{
+                                  display: "none",
+                                }}
+                              />
+                              <span
+                                className="custom-sub-checkbox"
+                                style={{
+                                  width: "16px",
+                                  height: "16px",
+                                  border: "1.5px solid #a0aec0",
+                                  borderRadius: "3px",
+                                  marginRight: "6px",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  backgroundColor: response.flagged
+                                    ? "#6d28d9"
+                                    : "transparent",
+                                  position: "relative",
+                                }}
+                              >
+                                {response.flagged && (
+                                  <span
+                                    style={{
+                                      fontSize: "10px",
+                                      color: "white",
+                                    }}
+                                  >
+                                    ✔
+                                  </span>
+                                )}
+                              </span>
+                              Mark as flagged
+                            </label>
+                            {isScoringEnabled && (
+                              <>
+                                <span
+                                  className="sub-control-divider"
+                                  style={{
+                                    color: "#cbd5e0",
+                                  }}
+                                >
+                                  |
+                                </span>
+                                <label
+                                  className="sub-control-score-label"
+                                  style={{
+                                    fontSize: "0.85rem",
+                                    color: "#4a5568",
+                                    display: "flex",
+                                    alignItems: "center",
+                                  }}
+                                >
+                                  Score
+                                  <input
+                                    type="number"
+                                    value={response.score}
+                                    onChange={(e) => {
+                                      const newResponses = [
+                                        ...editingResponses,
+                                      ];
+                                      newResponses[index].score =
+                                        e.target.value;
+                                      setEditingResponses(newResponses);
+                                    }}
+                                    className="sub-control-score-input"
+                                    style={{
+                                      width: "40px",
+                                      padding: "4px 6px",
+                                      border: "1px solid #cbd5e0",
+                                      borderRadius: "4px",
+                                      fontSize: "0.85rem",
+                                      marginLeft: "5px",
+                                      textAlign: "center",
+                                    }}
+                                  />
+                                </label>
+                              </>
                             )}
                           </div>
-                        ))}
-                      </div>
-                    </div>
+                        </div>
+                        {/* DELETE BUTTON AT FAR RIGHT OF ROW */}
+                        <button
+                          onClick={() => {
+                            const newResponses = editingResponses.filter(
+                              (_, i) => i !== index
+                            );
+                            setEditingResponses(newResponses);
+                            if (activeColorPickerIndex === index) {
+                              setActiveColorPickerIndex(null);
+                            }
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#dc3545",
+                            fontSize: "1.2rem",
+                            cursor: "pointer",
+                            padding: "8px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: "36px",
+                            height: "36px",
+                            borderRadius: "4px",
+                            transition: "all 0.2s",
+                            alignSelf: "flex-start",
+                            marginLeft: "10px",
+                          }}
+                          title="Delete this response"
+                        >
+                          <FaTrashAlt />
+                        </button>
+                      </li>
+                    ))
                   )}
-                </div>
+                </ul>
+                <button
+                  className="add-response-button"
+                  id="editorAddResponseBtn"
+                  onClick={() => {
+                    setEditingResponses([
+                      ...editingResponses,
+                      {
+                        text: "",
+                        class: "",
+                        score: "0",
+                        flagged: false,
+                        colorHex: "#6b7280",
+                      },
+                    ]);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#6d28d9",
+                    fontSize: "0.9rem",
+                    fontWeight: "500",
+                    cursor: "pointer",
+                    padding: "10px 0",
+                    marginTop: "10px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <span className="plus-icon" style={{ fontSize: "1.1rem" }}>
+                    +
+                  </span>
+                  Add Response
+                </button>
               </div>
-            )}
+
+              <div
+                className="modal-footer"
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: "10px",
+                  paddingTop: "20px",
+                  borderTop: "1px solid #e5e7eb",
+                  marginTop: "10px",
+                }}
+              >
+                <button
+                  className="btn-save-apply"
+                  id="editorSaveApplyBtn"
+                  onClick={() => {
+                    // Validate responses
+                    const validResponses = editingResponses.filter(
+                      (r) => r.text.trim() !== ""
+                    );
+                    if (validResponses.length === 0) {
+                      alert("Please add at least one response");
+                      return;
+                    }
+
+                    // Update the question with new responses
+                    updateQuestion(page.id, section.id, question.id, {
+                      responses: validResponses,
+                    });
+                    setIsEditModalOpen(false);
+                  }}
+                  style={{
+                    padding: "10px 20px",
+                    backgroundColor: "#6d28d9",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    cursor: "pointer",
+                  }}
+                >
+                  Save and apply
+                </button>
+                <button
+                  className="btn-cancel"
+                  id="editorCancelBtn"
+                  onClick={() => {
+                    setIsEditModalOpen(false);
+                    setActiveColorPickerIndex(null);
+                  }}
+                  style={{
+                    padding: "10px 20px",
+                    backgroundColor: "transparent",
+                    color: "#6b7280",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+
+              {/* Color Picker Popup */}
+              {activeColorPickerIndex !== null && (
+                <div
+                  className="color-picker-popup"
+                  style={{
+                    position: "absolute",
+                    top: "201px",
+                    right: "0px",
+                    backgroundColor: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+                    padding: "15px",
+                    zIndex: 1200,
+                    width: "230px",
+                  }}
+                >
+                  <div
+                    className="color-picker-header"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    <div
+                      className="color-picker-preview-swatch"
+                      style={{
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "4px",
+                        border: "1px solid #e5e7eb",
+                        marginRight: "10px",
+                        backgroundColor:
+                          editingResponses[activeColorPickerIndex]?.colorHex ||
+                          "#6b7280",
+                      }}
+                    ></div>
+                    <input
+                      type="text"
+                      className="color-picker-hex-input"
+                      value={
+                        editingResponses[activeColorPickerIndex]?.colorHex ||
+                        "#6b7280"
+                      }
+                      onChange={(e) => {
+                        const newResponses = [...editingResponses];
+                        newResponses[activeColorPickerIndex].colorHex =
+                          e.target.value;
+                        setEditingResponses(newResponses);
+                      }}
+                      style={{
+                        flexGrow: 1,
+                        padding: "6px 8px",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "4px",
+                        fontSize: "0.85rem",
+                        outline: "none",
+                      }}
+                      maxLength="7"
+                    />
+                  </div>
+                  <div
+                    className="color-picker-grid"
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(6, 1fr)",
+                      gap: "8px",
+                    }}
+                  >
+                    {[
+                      {
+                        hex: "#13855f",
+                        class: "yes",
+                        title: "Green (Yes/Good)",
+                      },
+                      {
+                        hex: "#ef4444",
+                        class: "no",
+                        title: "Red (No/Poor)",
+                      },
+                      {
+                        hex: "#a0aec0",
+                        class: "na",
+                        title: "Gray (N/A)",
+                      },
+                      {
+                        hex: "#f59e0b",
+                        class: "fair",
+                        title: "Yellow (Fair)",
+                      },
+                      {
+                        hex: "#6e42ff",
+                        class: "primary",
+                        title: "Purple (Primary)",
+                      },
+                      {
+                        hex: "#f0eefe",
+                        class: "light-purple",
+                        title: "Light Purple BG",
+                      },
+                      {
+                        hex: "#ffedd5",
+                        class: "custom-orange",
+                        title: "Orange",
+                      },
+                      {
+                        hex: "#fef9c3",
+                        class: "custom-light-yellow",
+                        title: "Light Yellow",
+                      },
+                      {
+                        hex: "#dbeafe",
+                        class: "custom-light-blue",
+                        title: "Light Blue",
+                      },
+                      {
+                        hex: "#dcfce7",
+                        class: "custom-light-green",
+                        title: "Light Green",
+                      },
+                      {
+                        hex: "#ccfbf1",
+                        class: "custom-teal",
+                        title: "Teal",
+                      },
+                      {
+                        hex: "#e0f2fe",
+                        class: "custom-sky-blue",
+                        title: "Sky Blue",
+                      },
+                      {
+                        hex: "#e0e7ff",
+                        class: "custom-indigo",
+                        title: "Indigo",
+                      },
+                      // Removed duplicate #a0aec0 entry
+                    ].map((color, idx) => (
+                      <div
+                        key={`color-${idx}-${color.hex}`}
+                        className={`color-picker-grid-swatch ${
+                          editingResponses[activeColorPickerIndex]?.colorHex ===
+                          color.hex
+                            ? "selected"
+                            : ""
+                        }`}
+                        title={color.title}
+                        onClick={() => {
+                          const newResponses = [...editingResponses];
+                          newResponses[activeColorPickerIndex].colorHex =
+                            color.hex;
+                          newResponses[activeColorPickerIndex].class =
+                            color.class;
+                          setEditingResponses(newResponses);
+                        }}
+                        style={{
+                          width: "26px",
+                          height: "26px",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          border:
+                            editingResponses[activeColorPickerIndex]
+                              ?.colorHex === color.hex
+                              ? "2px solid #6d28d9"
+                              : "2px solid transparent",
+                          boxSizing: "border-box",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: color.hex,
+                        }}
+                      >
+                        {editingResponses[activeColorPickerIndex]?.colorHex ===
+                          color.hex && (
+                          <i
+                            className="fas fa-check"
+                            style={{
+                              color: "#6d28d9",
+                              fontSize: "0.8em",
+                            }}
+                          ></i>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {showLogicConfig && !logicConfigType && (
           <div
@@ -6890,7 +7191,7 @@ export default function AuditQuestionEditor() {
           </div>
         )}
 
-{renderMultipleChoiceEditorModal()}
+        {renderMultipleChoiceEditorModal()}
         {renderSaveAsGlobalModal()}
         {/* Autosave Status */}
       </div>
