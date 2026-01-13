@@ -158,8 +158,9 @@ export default function Home() {
           }}>
             Advanced question management with full features. Create, edit, and organize audit questions efficiently.
           </p>
+          
           <Link
-            to="/audit-question-editor"
+            to="/audit-question-editor/1"
             style={{
               display: 'block',
               width: '100%',

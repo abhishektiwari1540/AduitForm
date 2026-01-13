@@ -55,10 +55,11 @@
     "vaul": "^1.1.2",
     "zod": "^3.24.4"
   },
-  "scripts": {
-    "start": "craco start",
+ "scripts": {
+    "postinstall": "chmod +x node_modules/.bin/craco || echo 'Postinstall complete'",
     "build": "craco build",
-    "test": "craco test"
+    "dev": "craco start",
+    "start": "next start"
   },
   "browserslist": {
     "production": [
