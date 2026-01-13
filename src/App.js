@@ -13,7 +13,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/audit-front" element={<AuditFront />} />
           <Route path="/audit-editor" element={<AuditEditor />} />
-          <Route path="/audit-question-editor/:id" element={<AuditQuestionEditor />} />
+          <Route path="/audit-question-editor/1" element={<AuditQuestionEditor />} />
         </Routes>
       </BrowserRouter>
     </div>
