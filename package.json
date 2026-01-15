@@ -66,11 +66,9 @@
     "workbox-webpack-plugin": "^7.4.0",
     "zod": "^3.24.4"
   },
- "scripts": {
+  "scripts": {
     "start": "react-scripts start",
-    "prebuild": "chmod +x node_modules/.bin/react-scripts",
-    "build": "react-scripts build",
-    "vercel-build": "chmod +x node_modules/.bin/react-scripts && CI=false react-scripts build",
+    "build": "chmod +x node_modules/.bin/react-scripts && react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

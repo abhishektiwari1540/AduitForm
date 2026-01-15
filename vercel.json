@@ -1,8 +1,13 @@
 {
   "version": 2,
-  "buildCommand": "npm run vercel-build",
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build"
+    }
+  ],
+  "buildCommand": "chmod +x node_modules/.bin/react-scripts && CI=false npm run build",
+  "installCommand": "npm install --legacy-peer-deps && chmod +x node_modules/.bin/react-scripts",
   "outputDirectory": "build",
-  "installCommand": "npm install --legacy-peer-deps",
-  "devCommand": "npm start",
   "framework": "create-react-app"
 }
