@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline - Your App</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 50px;
+    }
+    .offline-message {
+      color: #666;
+      margin-top: 20px;
+    }
+    .icon {
+      font-size: 48px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="icon">📶</div>
+  <h1>You're Offline</h1>
+  <p class="offline-message">
+    Don't worry! You can still use the app. 
+    Your changes will be saved and synced when you're back online.
+  </p>
+  <button onclick="window.location.reload()">Try Again</button>
+</body>
+</html>

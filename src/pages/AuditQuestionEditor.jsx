@@ -30,6 +30,8 @@ import { FaCopy } from "react-icons/fa6";
 import axios from "axios";
 import { useParams } from "react-router-dom";
 import { multipleChoiceService } from "../pages/services/multipleChoiceService";
+import { offlineManager } from "../services/offlineManager";
+import offlineApi from "../services/offlineApi";
 const styles = `
   .scoring-panel-popup {
     animation: fadeIn 0.2s ease-out;
@@ -64,6 +66,40 @@ const styles = `
   .pill-good {
     background-color: #e6f4ea !important;
     color: #006400 !important;
+  }
+    /* Offline styles */
+  .offline-badge {
+    background-color: #ff9800 !important;
+    color: white !important;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    margin-left: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  
+  .pending-sync-badge {
+    background-color: #ff9800 !important;
+    color: white !important;
+    padding: 2px 8px;
+    border-radius: 50%;
+    font-size: 0.7rem;
+    min-width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  .offline-response-set {
+    border-left: 3px solid #ff9800 !important;
   }
 
   .pill-fair {
@@ -209,7 +245,11 @@ export default function AuditQuestionEditor() {
     questionId: null,
     questionText: "",
   });
-
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingOperations, setPendingOperations] = useState([]);
+  const [offlineData, setOfflineData] = useState(null);
+  const [showOfflineAlert, setShowOfflineAlert] = useState(false);
+  const [currentDraftId, setCurrentDraftId] = useState(null);
   const colorPalette = [
     { hex: "#13855f", class: "yes", title: "Green (Yes/Good)" },
     { hex: "#ef4444", class: "no", title: "Red (No/Poor)" },
@@ -305,11 +345,36 @@ export default function AuditQuestionEditor() {
   const fetchGlobalResponseSets = async () => {
     try {
       setLoadingGlobalSets(true);
-      const data = await multipleChoiceService.getGlobalResponseSets();
-      setGlobalResponseSets(data.data || []);
+
+      if (navigator.onLine) {
+        const data = await multipleChoiceService.getGlobalResponseSets();
+        setGlobalResponseSets(data.data || []);
+
+        // Cache the response sets for offline use
+        localStorage.setItem(
+          "cachedResponseSets",
+          JSON.stringify(data.data || [])
+        );
+      } else {
+        // Load from cache when offline
+        const cached = localStorage.getItem("cachedResponseSets");
+        if (cached) {
+          setGlobalResponseSets(JSON.parse(cached));
+        } else {
+          setGlobalResponseSets([]);
+          console.log("No cached response sets available offline");
+        }
+      }
     } catch (error) {
       console.error("Error fetching global response sets:", error);
-      setGlobalResponseSets([]);
+
+      // Fallback to cache
+      const cached = localStorage.getItem("cachedResponseSets");
+      if (cached) {
+        setGlobalResponseSets(JSON.parse(cached));
+      } else {
+        setGlobalResponseSets([]);
+      }
     } finally {
       setLoadingGlobalSets(false);
     }
@@ -318,12 +383,29 @@ export default function AuditQuestionEditor() {
   // Handle saving multiple choice responses
   const saveMultipleChoiceResponses = async (questionId, responses) => {
     try {
-      const result = await multipleChoiceService.saveMultipleChoiceResponses(
-        questionId,
-        responses
-      );
-      console.log("Responses saved successfully:", result);
-      return true;
+      if (navigator.onLine) {
+        const result = await multipleChoiceService.saveMultipleChoiceResponses(
+          questionId,
+          responses
+        );
+        console.log("Responses saved successfully:", result);
+        return true;
+      } else {
+        // Save locally for offline
+        const localKey = `question_responses_${questionId}`;
+        localStorage.setItem(localKey, JSON.stringify(responses));
+
+        // Queue for sync
+        await offlineManager.queueOperation({
+          type: "SAVE_RESPONSES",
+          url: `${API_BASE_URL}multiple-choice/responses/${questionId}`,
+          data: { questionId, responses },
+          method: "POST",
+        });
+
+        alert("Responses saved locally and will sync when online");
+        return true;
+      }
     } catch (error) {
       console.error("Error saving multiple choice responses:", error);
       alert("Failed to save responses. Please try again.");
@@ -331,6 +413,44 @@ export default function AuditQuestionEditor() {
     }
   };
 
+  useEffect(() => {
+    // Setup online/offline listeners
+    const cleanup = offlineManager.setupEventListeners((status) => {
+      setIsOnline(status === "online");
+      setShowOfflineAlert(status === "offline");
+
+      if (status === "online") {
+        // Auto-sync when coming back online
+        offlineManager.syncPendingOperations();
+      }
+    });
+
+    // Load pending operations count
+    const loadPendingOps = () => {
+      const pendingOps = JSON.parse(
+        localStorage.getItem("pendingOperations") || "[]"
+      );
+      setPendingOperations(pendingOps);
+    };
+
+    loadPendingOps();
+
+    // Listen for offline operation events
+    const handleOfflineOperation = (event) => {
+      if (event.detail.type === "SYNC_SUCCESS") {
+        loadPendingOps();
+        // Optionally show success notification
+        console.log("Operation synced:", event.detail.operationId);
+      }
+    };
+
+    window.addEventListener("offline-operation", handleOfflineOperation);
+
+    return () => {
+      cleanup();
+      window.removeEventListener("offline-operation", handleOfflineOperation);
+    };
+  }, []);
   // Handle saving as global response set
   const handleSaveAsGlobalSet = async () => {
     if (!newGlobalSetName.trim()) {
@@ -344,20 +464,44 @@ export default function AuditQuestionEditor() {
     }
 
     try {
-      await multipleChoiceService.saveAsGlobalResponseSet(
-        newGlobalSetName,
-        editingResponses
-      );
+      const data = {
+        name: newGlobalSetName,
+        responses: editingResponses,
+      };
 
-      // Refresh global sets
-      await fetchGlobalResponseSets();
+      // Use offline API
+      const result = await offlineApi.saveResponseSet(data, false, null);
+
+      if (result.message === "Queued for offline sync") {
+        alert("Response set saved locally and will sync when online");
+
+        // Update local state immediately
+        const newSet = {
+          id: `temp_${Date.now()}`,
+          name: newGlobalSetName,
+          responses: editingResponses,
+          isGlobal: true,
+          isOffline: true,
+        };
+
+        setGlobalResponseSets((prev) => [...prev, newSet]);
+      } else {
+        // Online save successful
+        await fetchGlobalResponseSets();
+        alert("Response set saved successfully!");
+      }
 
       setShowSaveAsGlobalModal(false);
       setNewGlobalSetName("");
-      alert("Response set saved successfully!");
     } catch (error) {
       console.error("Error saving global response set:", error);
-      alert("Failed to save as global set. Please try again.");
+      if (error.operationId) {
+        alert("Response set saved locally and will sync when online");
+        setShowSaveAsGlobalModal(false);
+        setNewGlobalSetName("");
+      } else {
+        alert("Failed to save as global set. Please try again.");
+      }
     }
   };
 
@@ -403,6 +547,56 @@ export default function AuditQuestionEditor() {
   // Combined sets (predefined + global)
   const allResponseSets = [...predefinedResponseSets, ...filteredGlobalSets];
 
+
+
+
+  useEffect(() => {
+  // Setup online/offline listeners
+  const cleanup = offlineManager.setupEventListeners((status) => {
+    setIsOnline(status === "online");
+    setShowOfflineAlert(status === "offline");
+
+    if (status === "online") {
+      // Auto-sync when coming back online
+      const pendingOps = JSON.parse(
+        localStorage.getItem("pendingOperations") || "[]"
+      );
+      if (pendingOps.length > 0) {
+        // Show notification about pending syncs
+        console.log(`Online! ${pendingOps.length} pending operations to sync`);
+        // You could auto-sync here or just notify user
+        // offlineManager.syncPendingOperations();
+      }
+    }
+  });
+
+  // Load pending operations count
+  const loadPendingOps = () => {
+    const pendingOps = JSON.parse(
+      localStorage.getItem("pendingOperations") || "[]"
+    );
+    setPendingOperations(pendingOps);
+  };
+
+  loadPendingOps();
+
+  // Listen for offline operation events
+  const handleOfflineOperation = (event) => {
+    if (event.detail.type === "SYNC_SUCCESS") {
+      loadPendingOps();
+      // Optionally show success notification
+      console.log("Operation synced:", event.detail.operationId);
+    }
+  };
+
+  window.addEventListener("offline-operation", handleOfflineOperation);
+
+  return () => {
+    cleanup();
+    window.removeEventListener("offline-operation", handleOfflineOperation);
+    if (saveTimeout.current) clearTimeout(saveTimeout.current);
+  };
+}, []);
   // Open edit modal with question data
   const openEditModal = (
     pageId,
@@ -437,6 +631,23 @@ export default function AuditQuestionEditor() {
     setEditingGlobalSetId(globalSetId);
     setIsEditModalOpen(true);
   };
+
+  useEffect(() => {
+  // Load current draft on component mount
+  const loadCurrentDraft = async () => {
+    try {
+      const draft = await offlineManager.getCurrentDraft();
+      if (draft) {
+        setCurrentDraftId(draft.id);
+        console.log('Loaded existing draft:', draft.id);
+      }
+    } catch (error) {
+      console.error('Error loading draft:', error);
+    }
+  };
+  
+  loadCurrentDraft();
+}, []);
 
   // Handle save and apply
   const handleSaveAndApply = async () => {
@@ -490,58 +701,66 @@ export default function AuditQuestionEditor() {
     fetchUnitData();
   }, []);
 
- const fetchUnitData = async () => {
-  try {
-    setLoading(true);
-    setError(null);
+  const loadOfflineData = async () => {
+    // Try to load from IndexedDB
+    const localTemplate = await offlineManager.getAuditTemplate(unitId);
 
-    const response = await axios.get(`${API_BASE_URL}audit-templates/${unitId}`);
-    const templateData = response.data.data;
-    
-    console.log("Fetched Audit Template Data:", templateData);
-    
-    // Check if data exists and has the expected structure
-    if (templateData) {
-      // Map API data to your unitDetails state
-      setUnitDetails({
-        companyName: templateData?.unitDetails?.company_name || templateData?.company_name || "",
-        representativeName: templateData?.unitDetails?.representative_name || templateData?.representative_name || "",
-        address: templateData?.unitDetails?.complete_address || templateData?.complete_address || "",
-        contactNumber: templateData?.unitDetails?.contact_number || templateData?.contact_number || "",
-        email: templateData?.unitDetails?.email || templateData?.email || "",
-        scheduledManday: templateData?.unitDetails?.scheduled_manday || templateData?.scheduled_manday || "",
-        auditScope: templateData?.unitDetails?.audit_scope || templateData?.audit_scope || "",
-        auditDateFrom: templateData?.unitDetails?.audit_date_from || templateData?.audit_date_from
-          ? formatDateForInput(templateData?.unitDetails?.audit_date_from || templateData?.audit_date_from)
-          : "",
-        auditDateTo: templateData?.unitDetails?.audit_date_to || templateData?.audit_date_to
-          ? formatDateForInput(templateData?.unitDetails?.audit_date_to || templateData?.audit_date_to)
-          : "",
-        coordinates: templateData?.unitDetails?.geotag_location || templateData?.geotag_location || "",
-      });
-      
-      // Load template pages
-      if (templateData.pages && Array.isArray(templateData.pages)) {
-        setPages(templateData.pages);
-      } else if (templateData.data?.pages && Array.isArray(templateData.data.pages)) {
-        setPages(templateData.data.pages);
-      }
-      
-      // Set audit start time if available
-      if (templateData.audit_start_time) {
-        setAuditStartTime(templateData.audit_start_time);
-        setAuditStarted(true);
+    if (localTemplate) {
+      processTemplateData(localTemplate.data);
+      setOfflineData(localTemplate);
+    } else {
+      // Try localStorage as fallback
+      const cached = localStorage.getItem(`auditTemplate_${unitId}`);
+      if (cached) {
+        const templateData = JSON.parse(cached);
+        processTemplateData(templateData);
+        setOfflineData({ data: templateData, isDirty: false });
+      } else {
+        setError(
+          "No offline data available. Please connect to the internet to load data."
+        );
       }
     }
-    
-  } catch (err) {
-    console.error("Error fetching audit template:", err);
-    setError("Failed to load audit template. Please try again.");
-  } finally {
-    setLoading(false);
-  }
-};
-  
+  };
+
+  const fetchUnitData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // First try online fetch
+      if (navigator.onLine) {
+        try {
+          const response = await axios.get(
+            `${API_BASE_URL}audit-templates/${unitId}`
+          );
+          const templateData = response.data.data;
+
+          // Process and set data...
+          processTemplateData(templateData);
+
+          // Save to local storage for offline access
+          localStorage.setItem(
+            `auditTemplate_${unitId}`,
+            JSON.stringify(templateData)
+          );
+        } catch (onlineError) {
+          console.log("Online fetch failed, trying offline...");
+          // Fallback to offline data
+          await loadOfflineData();
+        }
+      } else {
+        // Offline mode
+        await loadOfflineData();
+      }
+    } catch (err) {
+      console.error("Error fetching audit template:", err);
+      setError("Failed to load audit template. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatDateForInput = (dateString) => {
     if (!dateString) return "";
     const date = new Date(dateString);
@@ -567,7 +786,9 @@ export default function AuditQuestionEditor() {
   const [logicSectionId, setLogicSectionId] = useState(null);
   const [logicPageId, setLogicPageId] = useState(null);
   const [auditStartTime, setAuditStartTime] = useState("");
-
+  const [lastSaveTime, setLastSaveTime] = useState(0);
+  const SAVE_DEBOUNCE_TIME = 2000; // 2 seconds
+  const [syncing, setSyncing] = useState(false);
   const [scoringPanelState, setScoringPanelState] = useState({
     isOpen: false,
     questionId: null,
@@ -581,12 +802,63 @@ export default function AuditQuestionEditor() {
     top: 0,
     left: 0,
   });
-  
+
+  const syncOfflineData = async () => {
+    try {
+      setSyncing(true);
+
+      // Get pending operations
+      const pendingOps = JSON.parse(
+        localStorage.getItem("pendingOperations") || "[]"
+      );
+
+      if (pendingOps.length === 0) {
+        alert("No pending syncs");
+        return;
+      }
+
+      // Group by type for better error handling
+      const results = await offlineApi.syncPendingTemplates();
+
+      // Show results
+      const successful = results.filter((r) => r.success).length;
+      const failed = results.filter((r) => !r.success).length;
+
+      alert(`Sync completed: ${successful} successful, ${failed} failed`);
+
+      // Refresh data
+      if (successful > 0) {
+        fetchUnitData();
+        fetchGlobalResponseSets();
+      }
+
+      // Update pending operations count
+      const updatedPendingOps = JSON.parse(
+        localStorage.getItem("pendingOperations") || "[]"
+      );
+      setPendingOperations(updatedPendingOps);
+    } catch (error) {
+      console.error("Sync error:", error);
+      alert("Sync failed: " + (error.message || "Unknown error"));
+    } finally {
+      setSyncing(false);
+    }
+  };
   // Save/Update functionality
-const handleSaveOrUpdate = async () => {
+  const handleSaveOrUpdate = async () => {
+  const now = Date.now();
+  
+  // Debounce check
+  if (now - lastSaveTime < SAVE_DEBOUNCE_TIME) {
+    alert("Please wait before saving again");
+    return;
+  }
+
+  setLastSaveTime(now);
+
   try {
     setSaving(true);
-    
+
     // Prepare the complete data object
     const dataToSave = {
       unit_details: {
@@ -604,50 +876,70 @@ const handleSaveOrUpdate = async () => {
       template_data: {
         pages: pages,
         last_updated: new Date().toISOString(),
-        version: '1.0'
+        version: "1.0",
       },
       audit_started: auditStarted,
-      audit_start_time: auditStartTime
+      audit_start_time: auditStartTime,
+      
+      // Metadata for draft handling
+      is_draft: !unitId, // Mark as draft if new template
+      last_modified: new Date().toISOString()
     };
 
-    let response;
-    let apiUrl;
+    // Use draft ID if we have one, otherwise use provided ID
+    const saveTemplateId = currentDraftId || unitId || `draft_${Date.now()}`;
     
-    if (unitId) {
-      // Update existing template
-      apiUrl = `${API_BASE_URL}audit-templates/${unitId}`;
-      response = await axios.put(apiUrl, dataToSave);
-      alert("Audit template updated successfully!");
-    } else {
-      // Create new template
-      apiUrl = `${API_BASE_URL}audit-templates/create`;
-      response = await axios.post(apiUrl, dataToSave);
+    // Use offline API for save
+    const result = await offlineApi.saveAuditTemplate(
+      saveTemplateId,
+      dataToSave,
+      !!unitId // isUpdate flag
+    );
+
+    if (result.message === 'Saved locally for offline' || result.isDraft) {
+      // Draft or offline save
+      setCurrentDraftId(saveTemplateId);
+      alert(`✅ Draft saved! ${result.message}`);
       
-      // Get the new template ID from response
-      const newTemplateId = response.data.data.templateId;
-      alert(`Audit template saved successfully! Template ID: ${newTemplateId}`);
+      // Update last saved time
+      const timeNow = new Date();
+      setLastSaved(timeNow.toLocaleTimeString());
+    } else if (result.message === 'Synced to server') {
+      // Online save successful
+      alert(
+        unitId
+          ? "Audit template updated successfully!"
+          : "Audit template saved successfully!"
+      );
       
-      // You can redirect to the edit page with the new ID
-      // history.push(`/audit-editor/${newTemplateId}`);
+      // Clear draft if it was synced
+      if (currentDraftId && result.serverId) {
+        setCurrentDraftId(null);
+      }
     }
-    
-    console.log("Save/Update response:", response.data);
-    
-    // Update last saved time
-    const now = new Date();
-    setLastSaved(now.toLocaleTimeString());
-    
+
   } catch (error) {
     console.error("Error saving data:", error);
-    alert(`Failed to save data: ${error.response?.data?.message || error.message}`);
+    alert(
+      `Failed to save data: ${
+        error.response?.data?.message || error.message
+      }`
+    );
   } finally {
     setSaving(false);
   }
 };
 
 
+useEffect(() => {
+  const cleanupInterval = setInterval(async () => {
+    if (navigator.onLine) {
+      await offlineManager.cleanupOldDrafts(1); // Clean drafts older than 1 hour
+    }
+  }, 5 * 60 * 1000); // Every 5 minutes
 
-
+  return () => clearInterval(cleanupInterval);
+}, []);
   // Handle export data (for debugging or backup)
   const handleExportData = () => {
     const dataToExport = {
@@ -655,15 +947,16 @@ const handleSaveOrUpdate = async () => {
       pages,
       exportDate: new Date().toISOString(),
     };
-    
+
     const dataStr = JSON.stringify(dataToExport, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    
+    const dataUri =
+      "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
+
     const exportFileDefaultName = `audit-template-${new Date().getTime()}.json`;
-    
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
+
+    const linkElement = document.createElement("a");
+    linkElement.setAttribute("href", dataUri);
+    linkElement.setAttribute("download", exportFileDefaultName);
     linkElement.click();
   };
 
@@ -672,7 +965,7 @@ const handleSaveOrUpdate = async () => {
       console.log("Modal is now open");
     }
   }, [isEditModalOpen]);
-  
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
@@ -689,25 +982,49 @@ const handleSaveOrUpdate = async () => {
       document.removeEventListener("click", handleClickOutside);
     };
   }, [activeColorPickerIndex]);
-  
+
   // Auto-save functionality
   const saveTimeout = useRef();
+const saveData = useCallback(() => {
+  const now = Date.now();
+  
+  // Check if enough time has passed since last save
+  if (now - lastSaveTime < SAVE_DEBOUNCE_TIME) {
+    return;
+  }
+  
+  setLastSaveTime(now);
+  
+  // Save to localStorage
+  const data = { 
+    unitDetails, 
+    pages, 
+    lastUpdated: new Date().toISOString(),
+    offlineData: true 
+  };
+  localStorage.setItem("auditEditorData", JSON.stringify(data));
+  
+  // Also save to IndexedDB for offline access
+  offlineManager.saveAuditTemplateLocally(unitId || 'draft', data);
+  
+  const timeNow = new Date();
+  setLastSaved(timeNow.toLocaleTimeString());
+  
+  console.log('Auto-saved at:', timeNow.toLocaleTimeString());
+}, [unitDetails, pages, unitId, lastSaveTime]);
 
-  const saveData = useCallback(() => {
-    const data = { unitDetails, pages };
-    localStorage.setItem("auditEditorData", JSON.stringify(data));
-    const now = new Date();
-    setLastSaved(now.toLocaleTimeString());
-  }, [unitDetails, pages]);
+const debouncedSave = useCallback(() => {
+  if (saveTimeout.current) clearTimeout(saveTimeout.current);
+  saveTimeout.current = setTimeout(saveData, 1000); // Wait 1 second after last change
+}, [saveData]);
 
-  const debouncedSave = useCallback(() => {
+// Update your existing useEffect for auto-save
+useEffect(() => {
+  debouncedSave();
+  return () => {
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
-    saveTimeout.current = setTimeout(saveData, 1000);
-  }, [saveData]);
-
-  useEffect(() => {
-    debouncedSave();
-  }, [unitDetails, pages, debouncedSave]);
+  };
+}, [unitDetails, pages, debouncedSave]);
 
   const getLocation = () => {
     if (navigator.geolocation) {
@@ -746,6 +1063,10 @@ const handleSaveOrUpdate = async () => {
     );
   };
 
+  // Update auto-save to work offline
+  useEffect(() => {
+    debouncedSave();
+  }, [unitDetails, pages, debouncedSave]);
   const addQuestion = (pageId, sectionId) => {
     setPages((prev) =>
       prev.map((page) => {
@@ -934,7 +1255,7 @@ const handleSaveOrUpdate = async () => {
       )
     );
   };
-  
+
   const addLogicRule = (pageId, sectionId, qId) => {
     const question = pages
       .find((p) => p.id === pageId)
@@ -1024,7 +1345,7 @@ const handleSaveOrUpdate = async () => {
       triggers: rule.triggers.filter((t) => t.id !== triggerId),
     });
   };
-  
+
   const handleTriggerSave = (config) => {
     const { questionId, ruleId, triggerId } = logicModalState;
     if (!questionId || !ruleId || !triggerId) return;
@@ -1094,7 +1415,7 @@ const handleSaveOrUpdate = async () => {
   const handleLogicConfig = (type) => {
     setLogicConfigType(type);
   };
-  
+
   const handleSaveEvidenceConfig = (config) => {
     // Add logic rule to the question
     const rule = {
@@ -1181,7 +1502,7 @@ const handleSaveOrUpdate = async () => {
     setShowLogicConfig(false);
     setLogicConfigType(null);
   };
-  
+
   useEffect(() => {
     const handleScroll = () => {
       if (scoringPanelState.isOpen) {
@@ -2420,7 +2741,7 @@ const handleSaveOrUpdate = async () => {
         </div>
       </div>
     );
-    
+
   // Handle click outside to close panel
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -2438,7 +2759,7 @@ const handleSaveOrUpdate = async () => {
       document.removeEventListener("click", handleClickOutside);
     };
   }, [scoringPanelState.isOpen]);
-  
+
   return (
     <div
       style={{
@@ -2449,6 +2770,81 @@ const handleSaveOrUpdate = async () => {
         minHeight: "100vh",
       }}
     >
+     {showOfflineAlert && (
+  <div style={{
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#ff9800',
+    color: 'white',
+    padding: '10px',
+    textAlign: 'center',
+    zIndex: 9999,
+    fontWeight: 'bold',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '10px'
+  }}>
+    <span>🔴 You are currently offline</span>
+    {/* {pendingOperations.length > 0 && (
+      <span style={{ marginLeft: '20px' }}>
+        {pendingOperations.length} pending sync(s)
+      </span>
+    )} */}
+    <button 
+      onClick={() => setShowOfflineAlert(false)}
+      style={{
+        background: 'rgba(255,255,255,0.2)',
+        border: 'none',
+        color: 'white',
+        padding: '5px 10px',
+        borderRadius: '4px',
+        cursor: 'pointer',
+        marginLeft: '20px'
+      }}
+    >
+      ×
+    </button>
+  </div>
+)}
+
+{!isOnline && (
+  <div style={{
+    position: 'fixed',
+    bottom: '20px',
+    right: '20px',
+    backgroundColor: '#ff9800',
+    color: 'white',
+    padding: '10px 20px',
+    borderRadius: '20px',
+    zIndex: 999,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+  }}>
+    <span>🔴 Offline Mode</span>
+    {/* {pendingOperations.length > 0 && (
+      <span style={{
+        backgroundColor: 'white',
+        color: '#ff9800',
+        borderRadius: '50%',
+        width: '20px',
+        height: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '12px',
+        fontWeight: 'bold'
+      }}>
+        {pendingOperations.length}
+      </span>
+    )} */}
+  </div>
+)}
+
       <div
         style={{
           maxWidth: "900px",
@@ -2480,16 +2876,67 @@ const handleSaveOrUpdate = async () => {
                 margin: 0,
               }}
             >
-              Audit Template Editor
+              Audit Template Editor {!isOnline && "(Offline)"}
             </h1>
-            <p style={{ margin: "5px 0 0 0", color: "#666", fontSize: "0.9rem" }}>
-              {unitId ? `Editing Unit: ${unitId}` : "Creating New Audit Template"}
+            <p
+              style={{ margin: "5px 0 0 0", color: "#666", fontSize: "0.9rem" }}
+            >
+              {unitId
+                ? `Editing Unit: ${unitId}`
+                : "Creating New Audit Template"}
               <span style={{ marginLeft: "15px", color: "#28a745" }}>
                 Last saved: {lastSaved}
               </span>
+              {!isOnline && (
+                <span style={{ marginLeft: "15px", color: "#ff9800" }}>
+                  ⚠️ Working offline
+                </span>
+              )}
+              {/* {pendingOperations.length > 0 && (
+                <span style={{ marginLeft: "15px", color: "#ff9800" }}>
+                  ⏳ {pendingOperations.length} pending sync(s)
+                </span>
+              )} */}
             </p>
           </div>
-          
+          <div style={{ display: "flex", gap: "10px" }}>
+           
+<button
+  onClick={handleSaveOrUpdate}
+  disabled={saving}
+  style={{
+    padding: "10px 25px",
+    backgroundColor: saving ? "#999" : isOnline ? "#28a745" : "#ff9800",
+    color: "white",
+    border: "none",
+    borderRadius: "6px",
+    fontSize: "0.95rem",
+    fontWeight: "500",
+    cursor: saving ? "not-allowed" : "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    minWidth: "120px",
+    justifyContent: "center",
+  }}
+>
+  {saving ? (
+    <>
+      <FaSyncAlt style={{ animation: "spin 1s linear infinite" }} />
+      Saving...
+    </>
+  ) : isOnline ? (
+    <>
+      <FaSave /> {unitId ? "Update" : "Save"}
+    </>
+  ) : (
+    <>
+      <FaSave /> Save Locally
+    </>
+  )}
+</button>
+          </div>
+
           <div style={{ display: "flex", gap: "10px" }}>
             {/* <button
               onClick={handleExportData}
@@ -2510,7 +2957,7 @@ const handleSaveOrUpdate = async () => {
             >
               <FaFileAlt /> Export
             </button> */}
-            
+
             <button
               onClick={handleSaveOrUpdate}
               disabled={saving}
