@@ -6,8 +6,7 @@
       "use": "@vercel/static-build"
     }
   ],
-  "buildCommand": "chmod +x node_modules/.bin/react-scripts && CI=false npm run build",
-  "installCommand": "npm install --legacy-peer-deps && chmod +x node_modules/.bin/react-scripts",
-  "outputDirectory": "build",
-  "framework": "create-react-app"
+  "installCommand": "rm -rf node_modules package-lock.json && npm install --legacy-peer-deps --no-audit",
+  "buildCommand": "npm run build",
+  "outputDirectory": "build"
 }
