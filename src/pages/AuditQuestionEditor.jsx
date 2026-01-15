@@ -118,6 +118,41 @@ const styles = `
     align-items: stretch !important;
     gap: 6px !important;
   }
+
+  .audit-header {
+        padding: 15px !important;
+        gap: 15px !important;
+      }
+      
+      .audit-title-section {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 15px !important;
+      }
+      
+      .audit-status-indicators {
+        align-items: flex-start !important;
+        width: 100% !important;
+      }
+      
+      .audit-button-section {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 15px !important;
+      }
+      
+      .audit-button-section > div {
+        width: 100% !important;
+        justify-content: center !important;
+      }
+      
+      .audit-action-button {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 14px 20px !important;
+      }
+    }
+    
   
   .max-score-input {
     font-size: 16px !important;
@@ -137,6 +172,35 @@ const styles = `
         right: 17px;
   }
 }
+
+  @media (max-width: 480px) {
+      .audit-header {
+        padding: 12px !important;
+        border-radius: 8px !important;
+        margin-bottom: 20px !important;
+      }
+      
+      .audit-title {
+        font-size: 1.3rem !important;
+      }
+      
+      .audit-status-indicators > div {
+        width: 100% !important;
+        justify-content: center !important;
+        text-align: center !important;
+      }
+    }
+
+    @media print {
+      .audit-header {
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+      }
+      
+      .audit-action-button {
+        display: none !important;
+      }
+    }
 `;
 import RequireEvidenceModal from "./RequireEvidenceModal";
 import NotifyModal from "./NotifyModal";
@@ -2788,11 +2852,7 @@ useEffect(() => {
     gap: '10px'
   }}>
     <span>🔴 You are currently offline</span>
-    {/* {pendingOperations.length > 0 && (
-      <span style={{ marginLeft: '20px' }}>
-        {pendingOperations.length} pending sync(s)
-      </span>
-    )} */}
+   
     <button 
       onClick={() => setShowOfflineAlert(false)}
       style={{
@@ -2854,147 +2914,288 @@ useEffect(() => {
         }}
       >
         {/* Header with Save/Update buttons */}
-        <div
-          style={{
-            backgroundColor: "#ffffff",
-            border: "1px solid #ced4da",
-            borderRadius: "10px",
-            marginBottom: "30px",
-            boxShadow: "0 5px 15px rgba(0,0,0,0.1)",
-            padding: "15px 20px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <h1
-              style={{
-                fontSize: "1.5rem",
-                fontWeight: "700",
-                color: "#6e42ff",
-                margin: 0,
-              }}
-            >
-              Audit Template Editor {!isOnline && "(Offline)"}
-            </h1>
-            <p
-              style={{ margin: "5px 0 0 0", color: "#666", fontSize: "0.9rem" }}
-            >
-              {unitId
-                ? `Editing Unit: ${unitId}`
-                : "Creating New Audit Template"}
-              <span style={{ marginLeft: "15px", color: "#28a745" }}>
-                Last saved: {lastSaved}
-              </span>
-              {!isOnline && (
-                <span style={{ marginLeft: "15px", color: "#ff9800" }}>
-                  ⚠️ Working offline
-                </span>
-              )}
-              {/* {pendingOperations.length > 0 && (
-                <span style={{ marginLeft: "15px", color: "#ff9800" }}>
-                  ⏳ {pendingOperations.length} pending sync(s)
-                </span>
-              )} */}
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: "10px" }}>
-           
-<button
-  onClick={handleSaveOrUpdate}
-  disabled={saving}
+      <div
   style={{
-    padding: "10px 25px",
-    backgroundColor: saving ? "#999" : isOnline ? "#28a745" : "#ff9800",
-    color: "white",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "0.95rem",
-    fontWeight: "500",
-    cursor: saving ? "not-allowed" : "pointer",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    minWidth: "120px",
-    justifyContent: "center",
+    maxWidth: "900px",
+    margin: "0 auto",
+    position: "relative",
+    paddingBottom: "50px",
   }}
 >
-  {saving ? (
-    <>
-      <FaSyncAlt style={{ animation: "spin 1s linear infinite" }} />
-      Saving...
-    </>
-  ) : isOnline ? (
-    <>
-      <FaSave /> {unitId ? "Update" : "Save"}
-    </>
-  ) : (
-    <>
-      <FaSave /> Save Locally
-    </>
-  )}
-</button>
-          </div>
-
-          <div style={{ display: "flex", gap: "10px" }}>
-            {/* <button
-              onClick={handleExportData}
+  {/* Header with Save/Update buttons */}
+  <div
+    style={{
+      backgroundColor: "#ffffff",
+      border: "1px solid #ced4da",
+      borderRadius: "10px",
+      marginBottom: "30px",
+      boxShadow: "0 5px 15px rgba(0,0,0,0.1)",
+      padding: "clamp(12px, 2vw, 20px)",
+      display: "flex",
+      flexDirection: "column",
+      gap: "20px",
+      width: "100%",
+      boxSizing: "border-box",
+    }}
+  >
+    {/* Top Row: Title and Status */}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "12px",
+        width: "100%",
+      }}
+    >
+      {/* Title and Online Status */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+          gap: "10px",
+          width: "100%",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "4px",
+            flex: "1 1 auto",
+            minWidth: "200px",
+          }}
+        >
+          <h1
+            style={{
+              fontSize: "clamp(1.25rem, 5vw, 1.6rem)",
+              fontWeight: "700",
+              color: "#6e42ff",
+              margin: 0,
+              lineHeight: 1.3,
+              wordBreak: "break-word",
+            }}
+          >
+            Audit Template Editor
+            {!isOnline && (
+              <span
+                style={{
+                  color: "#ff9800",
+                  fontSize: "0.9em",
+                  marginLeft: "8px",
+                  fontWeight: "600",
+                }}
+              >
+                (Offline)
+              </span>
+            )}
+          </h1>
+          
+          <p
+            style={{
+              margin: 0,
+              color: "#666",
+              fontSize: "clamp(0.85rem, 3vw, 0.95rem)",
+              lineHeight: 1.4,
+            }}
+          >
+            {unitId
+              ? `Editing Unit: ${unitId}`
+              : "Creating New Audit Template"}
+          </p>
+        </div>
+        
+        {/* Status Indicators */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: "8px",
+            flexShrink: 0,
+          }}
+        >
+          {!isOnline && (
+            <div
               style={{
-                padding: "10px 20px",
-                backgroundColor: "transparent",
-                color: "#6e42ff",
-                border: "1px solid #6e42ff",
-                borderRadius: "6px",
-                fontSize: "0.95rem",
-                fontWeight: "500",
-                cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
-                gap: "8px",
-              }}
-              title="Export template data"
-            >
-              <FaFileAlt /> Export
-            </button> */}
-
-            <button
-              onClick={handleSaveOrUpdate}
-              disabled={saving}
-              style={{
-                padding: "10px 25px",
-                backgroundColor: saving ? "#999" : "#28a745",
-                color: "white",
-                border: "none",
+                gap: "6px",
+                backgroundColor: "#fff3cd",
+                padding: "6px 12px",
                 borderRadius: "6px",
-                fontSize: "0.95rem",
-                fontWeight: "500",
-                cursor: saving ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                minWidth: "120px",
-                justifyContent: "center",
+                border: "1px solid #ffeaa7",
               }}
             >
-              {saving ? (
-                <>
-                  <FaSyncAlt style={{ animation: "spin 1s linear infinite" }} />
-                  Saving...
-                </>
-              ) : unitId ? (
-                <>
-                  <FaSave /> Update
-                </>
-              ) : (
-                <>
-                  <FaSave /> Save Template
-                </>
-              )}
-            </button>
+              <span style={{ color: "#e67e22", fontSize: "0.9rem" }}>⚠️</span>
+              <span
+                style={{
+                  color: "#d35400",
+                  fontSize: "0.85rem",
+                  fontWeight: "500",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Working Offline
+              </span>
+            </div>
+          )}
+          
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              fontSize: "0.85rem",
+              color: "#28a745",
+              fontWeight: "500",
+              backgroundColor: "#f8f9fa",
+              padding: "6px 12px",
+              borderRadius: "6px",
+              border: "1px solid #e9ecef",
+            }}
+          >
+            <span style={{ fontSize: "0.75rem" }}>●</span>
+            Last saved: {lastSaved}
           </div>
         </div>
+      </div>
+    </div>
 
+    {/* Button Section */}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        width: "100%",
+        borderTop: "1px solid #f1f3f4",
+        paddingTop: "15px",
+        flexWrap: "wrap",
+        gap: "15px",
+      }}
+    >
+      {/* Left side - Optional additional info or buttons */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          fontSize: "0.85rem",
+          color: "#666",
+          flexWrap: "wrap",
+        }}
+      >
+        {saving && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              color: "#007bff",
+              backgroundColor: "#e7f1ff",
+              padding: "6px 12px",
+              borderRadius: "6px",
+              fontWeight: "500",
+            }}
+          >
+            <FaSyncAlt
+              style={{
+                animation: "spin 1s linear infinite",
+                fontSize: "0.9rem",
+              }}
+            />
+            Saving changes...
+          </div>
+        )}
+      </div>
+
+      {/* Right side - Action Button */}
+      <div
+        style={{
+          display: "flex",
+          gap: "12px",
+          flexWrap: "wrap",
+          justifyContent: "flex-end",
+          flex: "1 1 auto",
+        }}
+      >
+        <button
+          onClick={handleSaveOrUpdate}
+          disabled={saving}
+          style={{
+            padding: "12px 24px",
+            backgroundColor: saving
+              ? "#adb5bd"
+              : isOnline
+              ? "#28a745"
+              : "#ff9800",
+            color: "white",
+            border: "none",
+            borderRadius: "8px",
+            fontSize: "clamp(0.9rem, 3vw, 1rem)",
+            fontWeight: "600",
+            cursor: saving ? "not-allowed" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "10px",
+            minWidth: "140px",
+            minHeight: "44px", // Minimum touch target size
+            transition: "all 0.2s ease",
+            boxShadow: "0 3px 6px rgba(0,0,0,0.1)",
+            flex: "0 1 auto",
+            width: "100%",
+            maxWidth: "220px",
+          }}
+          onMouseOver={(e) => {
+            if (!saving) {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = "0 5px 10px rgba(0,0,0,0.15)";
+            }
+          }}
+          onMouseOut={(e) => {
+            if (!saving) {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "0 3px 6px rgba(0,0,0,0.1)";
+            }
+          }}
+          onMouseDown={(e) => {
+            if (!saving) {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.1)";
+            }
+          }}
+        >
+          {saving ? (
+            <>
+              <FaSyncAlt
+                style={{
+                  animation: "spin 1s linear infinite",
+                  fontSize: "1rem",
+                }}
+              />
+              Saving...
+            </>
+          ) : isOnline ? (
+            <>
+              <FaSave style={{ fontSize: "1.1rem" }} />
+              {unitId ? "Update Template" : "Save Template"}
+            </>
+          ) : (
+            <>
+              <FaSave style={{ fontSize: "1.1rem" }} />
+              Save Locally
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
         {/* Unit Details Form */}
         <div
           style={{
