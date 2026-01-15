@@ -1,4 +1,8 @@
 {
-  "installCommand": "npm install --legacy-peer-deps && chmod +x node_modules/.bin/craco",
-  "buildCommand": "npm run build"
+  "version": 2,
+  "buildCommand": "npm run vercel-build",
+  "outputDirectory": "build",
+  "installCommand": "npm install --legacy-peer-deps",
+  "devCommand": "npm start",
+  "framework": "create-react-app"
 }
