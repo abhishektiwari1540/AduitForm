@@ -10,7 +10,7 @@
 
 const { LazyLoadingRuleMap } = require("./utils/lazy-loading-rule-map");
 
-/** @type {Map<string, import("../shared/types").Rule>} */
+/** @type {Map<string, import("../types").Rule.RuleModule>} */
 module.exports = new LazyLoadingRuleMap(
 	Object.entries({
 		"accessor-pairs": () => require("./accessor-pairs"),
@@ -225,6 +225,7 @@ module.exports = new LazyLoadingRuleMap(
 		"no-this-before-super": () => require("./no-this-before-super"),
 		"no-throw-literal": () => require("./no-throw-literal"),
 		"no-trailing-spaces": () => require("./no-trailing-spaces"),
+		"no-unassigned-vars": () => require("./no-unassigned-vars"),
 		"no-undef": () => require("./no-undef"),
 		"no-undef-init": () => require("./no-undef-init"),
 		"no-undefined": () => require("./no-undefined"),
@@ -292,6 +293,7 @@ module.exports = new LazyLoadingRuleMap(
 		"prefer-rest-params": () => require("./prefer-rest-params"),
 		"prefer-spread": () => require("./prefer-spread"),
 		"prefer-template": () => require("./prefer-template"),
+		"preserve-caught-error": () => require("./preserve-caught-error"),
 		"quote-props": () => require("./quote-props"),
 		quotes: () => require("./quotes"),
 		radix: () => require("./radix"),

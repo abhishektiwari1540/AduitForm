@@ -37,7 +37,7 @@ function isMember(node, name) {
 // Rule Definition
 //------------------------------------------------------------------------------
 
-/** @type {import('../shared/types').Rule} */
+/** @type {import('../types').Rule.RuleModule} */
 module.exports = {
 	meta: {
 		type: "suggestion",
@@ -226,7 +226,9 @@ module.exports = {
 
 			Program(node) {
 				const scope = sourceCode.getScope(node),
-					features = context.parserOptions.ecmaFeatures || {},
+					features =
+						context.languageOptions.parserOptions.ecmaFeatures ||
+						{},
 					strict =
 						scope.isStrict ||
 						node.sourceType === "module" ||

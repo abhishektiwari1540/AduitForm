@@ -14,7 +14,7 @@ const astUtils = require("./utils/ast-utils");
 // Rule Definition
 //------------------------------------------------------------------------------
 
-/** @type {import('../shared/types').Rule} */
+/** @type {import('../types').Rule.RuleModule} */
 module.exports = {
 	meta: {
 		hasSuggestions: true,
@@ -104,10 +104,47 @@ module.exports = {
 					typeof node.cases === "undefined" ||
 					node.cases.length === 0
 				) {
+					const openingBrace = sourceCode.getTokenAfter(
+						node.discriminant,
+						astUtils.isOpeningBraceToken,
+					);
+
+					const closingBrace = sourceCode.getLastToken(node);
+
+					if (
+						sourceCode.commentsExistBetween(
+							openingBrace,
+							closingBrace,
+						)
+					) {
+						return;
+					}
+
 					context.report({
 						node,
+						loc: {
+							start: openingBrace.loc.start,
+							end: closingBrace.loc.end,
+						},
 						messageId: "unexpected",
 						data: { type: "switch" },
+						suggest: [
+							{
+								messageId: "suggestComment",
+								data: { type: "switch" },
+								fix(fixer) {
+									const range = [
+										openingBrace.range[1],
+										closingBrace.range[0],
+									];
+
+									return fixer.replaceTextRange(
+										range,
+										" /* empty */ ",
+									);
+								},
+							},
+						],
 					});
 				}
 			},

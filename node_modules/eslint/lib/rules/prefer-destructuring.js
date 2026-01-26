@@ -22,7 +22,7 @@ const PRECEDENCE_OF_ASSIGNMENT_EXPR = astUtils.getPrecedence({
 // Rule Definition
 //------------------------------------------------------------------------------
 
-/** @type {import('../shared/types').Rule} */
+/** @type {import('../types').Rule.RuleModule} */
 module.exports = {
 	meta: {
 		type: "suggestion",
@@ -290,6 +290,14 @@ module.exports = {
 		function checkVariableDeclarator(node) {
 			// Skip if variable is declared without assignment
 			if (!node.init) {
+				return;
+			}
+
+			// Variable declarations using explicit resource management cannot use destructuring (parse error)
+			if (
+				node.parent.kind === "using" ||
+				node.parent.kind === "await using"
+			) {
 				return;
 			}
 

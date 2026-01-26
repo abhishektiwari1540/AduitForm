@@ -39,7 +39,7 @@ const astUtils = require("./utils/ast-utils");
 // Rule Definition
 //------------------------------------------------------------------------------
 
-/** @type {import('../shared/types').Rule} */
+/** @type {import('../types').Rule.RuleModule} */
 module.exports = {
 	meta: {
 		type: "problem",
@@ -88,6 +88,9 @@ module.exports = {
 							ignoreClassWithStaticInitBlock: {
 								type: "boolean",
 							},
+							ignoreUsingDeclarations: {
+								type: "boolean",
+							},
 							reportUsedIgnorePattern: {
 								type: "boolean",
 							},
@@ -119,6 +122,7 @@ module.exports = {
 			ignoreRestSiblings: false,
 			caughtErrors: "all",
 			ignoreClassWithStaticInitBlock: false,
+			ignoreUsingDeclarations: false,
 			reportUsedIgnorePattern: false,
 		};
 
@@ -137,6 +141,9 @@ module.exports = {
 				config.ignoreClassWithStaticInitBlock =
 					firstOption.ignoreClassWithStaticInitBlock ||
 					config.ignoreClassWithStaticInitBlock;
+				config.ignoreUsingDeclarations =
+					firstOption.ignoreUsingDeclarations ||
+					config.ignoreUsingDeclarations;
 				config.reportUsedIgnorePattern =
 					firstOption.reportUsedIgnorePattern ||
 					config.reportUsedIgnorePattern;
@@ -355,6 +362,22 @@ module.exports = {
 				return node.parent.type.indexOf("Export") === 0;
 			}
 			return false;
+		}
+
+		/**
+		 * Determines if a given variable uses the explicit resource management protocol.
+		 * @param {Variable} variable eslint-scope variable object.
+		 * @returns {boolean} True if the variable is declared with "using" or "await using"
+		 * @private
+		 */
+		function usesExplicitResourceManagement(variable) {
+			const [definition] = variable.defs;
+
+			return (
+				definition?.type === "Variable" &&
+				(definition.parent.kind === "using" ||
+					definition.parent.kind === "await using")
+			);
 		}
 
 		/**
@@ -922,6 +945,10 @@ module.exports = {
 					if (
 						!isUsedVariable(variable) &&
 						!isExported(variable) &&
+						!(
+							config.ignoreUsingDeclarations &&
+							usesExplicitResourceManagement(variable)
+						) &&
 						!hasRestSpreadSibling(variable)
 					) {
 						unusedVars.push(variable);
@@ -1152,7 +1179,7 @@ module.exports = {
 
 				// fix for { a: { b } }
 				if (parentNode.parent.type === "ObjectPattern") {
-					// fix for unused variables in dectructured object with single property in variable decalartion and function parameter
+					// fix for unused variables in destructured object with single property in variable declaration and function parameter
 					if (parentNode.parent.properties.length === 1) {
 						return fixVariables(parentNode.parent);
 					}
@@ -1601,12 +1628,12 @@ module.exports = {
 				return fixer.removeRange(parent.range);
 			}
 
-			// remove unused varible that is in a sequence [a,b] fixes to [a]
+			// remove unused variable that is in a sequence [a,b] fixes to [a]
 			if (tokenBefore?.value === ",") {
 				return fixer.removeRange([tokenBefore.range[0], id.range[1]]);
 			}
 
-			// remove unused varible that is in a sequence inside function arguments and object pattern
+			// remove unused variable that is in a sequence inside function arguments and object pattern
 			if (tokenAfter.value === ",") {
 				// fix function foo(a, b) {}
 				if (tokenBefore.value === "(") {

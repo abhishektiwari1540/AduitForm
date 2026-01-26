@@ -28,7 +28,7 @@ function capitalizeFirstLetter(text) {
 // Rule Definition
 //------------------------------------------------------------------------------
 
-/** @type {import('../shared/types').Rule} */
+/** @type {import('../types').Rule.RuleModule} */
 module.exports = {
 	meta: {
 		type: "suggestion",
@@ -167,6 +167,15 @@ module.exports = {
 				}
 
 				if (node.await) {
+					scopeInfo.hasAwait = true;
+				}
+			},
+			VariableDeclaration(node) {
+				if (!scopeInfo) {
+					return;
+				}
+
+				if (node.kind === "await using") {
 					scopeInfo.hasAwait = true;
 				}
 			},

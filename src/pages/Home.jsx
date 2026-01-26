@@ -178,6 +178,51 @@ export default function Home() {
             Manage Questions
           </Link>
         </div>
+
+        {/* WhatsApp Camera Card */}
+<div style={{
+  backgroundColor: 'white',
+  borderRadius: '0.75rem',
+  boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)',
+  padding: '2rem',
+  borderLeft: '4px solid #f59e0b',
+  transition: 'all 0.3s ease'
+}}>
+  <h3 style={{
+    fontSize: '1.5rem',
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: '1rem'
+  }}>
+    WhatsApp Camera
+  </h3>
+  <p style={{
+    color: '#4b5563',
+    marginBottom: '1.5rem',
+    lineHeight: '1.6'
+  }}>
+    Capture photos and videos with WhatsApp-like camera interface featuring cropping, brightness adjustment, and gallery.
+  </p>
+  <Link
+    to="/whatsapp-camera"
+    style={{
+      display: 'block',
+      width: '100%',
+      backgroundColor: '#f59e0b',
+      color: 'white',
+      fontWeight: '600',
+      padding: '0.75rem 1.5rem',
+      borderRadius: '0.5rem',
+      textAlign: 'center',
+      textDecoration: 'none',
+      transition: 'background-color 0.3s ease'
+    }}
+    onMouseOver={(e) => e.target.style.backgroundColor = '#d97706'}
+    onMouseOut={(e) => e.target.style.backgroundColor = '#f59e0b'}
+  >
+    Open Camera
+  </Link>
+</div>
       </div>
 
       <div style={{

@@ -9,7 +9,7 @@
 // Rule Definition
 //------------------------------------------------------------------------------
 
-/** @type {import('../shared/types').Rule} */
+/** @type {import('../types').Rule.RuleModule} */
 module.exports = {
 	meta: {
 		type: "suggestion",
@@ -30,10 +30,7 @@ module.exports = {
 	create(context) {
 		return {
 			Literal(node) {
-				if (
-					typeof node.value === "number" &&
-					/^0[0-9]/u.test(node.raw)
-				) {
+				if (typeof node.value === "number" && /^0\d/u.test(node.raw)) {
 					context.report({
 						node,
 						messageId: "noOctal",

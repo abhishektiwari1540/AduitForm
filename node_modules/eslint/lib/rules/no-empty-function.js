@@ -26,6 +26,10 @@ const ALLOW_OPTIONS = Object.freeze([
 	"constructors",
 	"asyncFunctions",
 	"asyncMethods",
+	"privateConstructors",
+	"protectedConstructors",
+	"decoratedFunctions",
+	"overrideMethods",
 ]);
 
 /**
@@ -83,13 +87,25 @@ function getKind(node) {
 	return prefix + kind[0].toUpperCase() + kind.slice(1);
 }
 
+/**
+ * Checks if a constructor function has parameter properties.
+ * @param {ASTNode} node The function node to examine.
+ * @returns {boolean} True if the constructor has parameter properties, false otherwise.
+ */
+function isParameterPropertiesConstructor(node) {
+	return node.params.some(param => param.type === "TSParameterProperty");
+}
+
 //------------------------------------------------------------------------------
 // Rule Definition
 //------------------------------------------------------------------------------
 
-/** @type {import('../shared/types').Rule} */
+/** @type {import('../types').Rule.RuleModule} */
 module.exports = {
 	meta: {
+		dialects: ["javascript", "typescript"],
+		language: "javascript",
+		hasSuggestions: true,
 		type: "suggestion",
 
 		defaultOptions: [{ allow: [] }],
@@ -116,12 +132,50 @@ module.exports = {
 
 		messages: {
 			unexpected: "Unexpected empty {{name}}.",
+			suggestComment: "Add comment inside empty {{name}}.",
 		},
 	},
 
 	create(context) {
 		const [{ allow }] = context.options;
 		const sourceCode = context.sourceCode;
+
+		/**
+		 * Checks if the given function node is allowed to be empty.
+		 * @param {ASTNode} node The function node to check.
+		 * @returns {boolean} True if the function is allowed to be empty, false otherwise.
+		 */
+		function isAllowedEmptyFunction(node) {
+			const kind = getKind(node);
+
+			if (allow.includes(kind)) {
+				return true;
+			}
+
+			if (kind === "constructors") {
+				if (
+					(node.parent.accessibility === "private" &&
+						allow.includes("privateConstructors")) ||
+					(node.parent.accessibility === "protected" &&
+						allow.includes("protectedConstructors")) ||
+					isParameterPropertiesConstructor(node)
+				) {
+					return true;
+				}
+			}
+
+			if (/(?:g|s)etters|methods$/iu.test(kind)) {
+				if (
+					(node.parent.decorators?.length &&
+						allow.includes("decoratedFunctions")) ||
+					(node.parent.override && allow.includes("overrideMethods"))
+				) {
+					return true;
+				}
+			}
+
+			return false;
+		}
 
 		/**
 		 * Reports a given function node if the node matches the following patterns.
@@ -135,7 +189,6 @@ module.exports = {
 		 * @returns {void}
 		 */
 		function reportIfEmpty(node) {
-			const kind = getKind(node);
 			const name = astUtils.getFunctionNameWithKind(node);
 			const innerComments = sourceCode.getTokens(node.body, {
 				includeComments: true,
@@ -143,7 +196,7 @@ module.exports = {
 			});
 
 			if (
-				!allow.includes(kind) &&
+				!isAllowedEmptyFunction(node) &&
 				node.body.type === "BlockStatement" &&
 				node.body.body.length === 0 &&
 				innerComments.length === 0
@@ -153,6 +206,23 @@ module.exports = {
 					loc: node.body.loc,
 					messageId: "unexpected",
 					data: { name },
+					suggest: [
+						{
+							messageId: "suggestComment",
+							data: { name },
+							fix(fixer) {
+								const range = [
+									node.body.range[0] + 1,
+									node.body.range[1] - 1,
+								];
+
+								return fixer.replaceTextRange(
+									range,
+									" /* empty */ ",
+								);
+							},
+						},
+					],
 				});
 			}
 		}

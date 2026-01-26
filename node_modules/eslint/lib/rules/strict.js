@@ -63,7 +63,7 @@ function isSimpleParameterList(params) {
 // Rule Definition
 //------------------------------------------------------------------------------
 
-/** @type {import('../shared/types').Rule} */
+/** @type {import('../types').Rule.RuleModule} */
 module.exports = {
 	meta: {
 		type: "suggestion",
@@ -101,7 +101,8 @@ module.exports = {
 	},
 
 	create(context) {
-		const ecmaFeatures = context.parserOptions.ecmaFeatures || {},
+		const ecmaFeatures =
+				context.languageOptions.parserOptions.ecmaFeatures || {},
 			scopes = [],
 			classScopes = [];
 		let [mode] = context.options;

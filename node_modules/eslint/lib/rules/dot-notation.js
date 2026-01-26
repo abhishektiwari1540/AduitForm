@@ -15,12 +15,12 @@ const keywords = require("./utils/keywords");
 // Rule Definition
 //------------------------------------------------------------------------------
 
-const validIdentifier = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/u;
+const validIdentifier = /^[a-zA-Z_$][\w$]*$/u;
 
 // `null` literal must be handled separately.
 const literalTypesToCheck = new Set(["string", "boolean"]);
 
-/** @type {import('../shared/types').Rule} */
+/** @type {import('../types').Rule.RuleModule} */
 module.exports = {
 	meta: {
 		type: "suggestion",

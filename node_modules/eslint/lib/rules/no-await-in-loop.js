@@ -41,7 +41,10 @@ function isLooped(node, parent) {
 
 		case "ForOfStatement":
 		case "ForInStatement":
-			return node === parent.body;
+			return (
+				node === parent.body ||
+				(node === parent.left && node.kind === "await using")
+			);
 
 		case "WhileStatement":
 		case "DoWhileStatement":
@@ -52,7 +55,7 @@ function isLooped(node, parent) {
 	}
 }
 
-/** @type {import('../shared/types').Rule} */
+/** @type {import('../types').Rule.RuleModule} */
 module.exports = {
 	meta: {
 		type: "problem",
@@ -76,6 +79,13 @@ module.exports = {
 		 * @returns {void}
 		 */
 		function validate(awaitNode) {
+			if (
+				awaitNode.type === "VariableDeclaration" &&
+				awaitNode.kind !== "await using"
+			) {
+				return;
+			}
+
 			if (awaitNode.type === "ForOfStatement" && !awaitNode.await) {
 				return;
 			}
@@ -99,6 +109,7 @@ module.exports = {
 		return {
 			AwaitExpression: validate,
 			ForOfStatement: validate,
+			VariableDeclaration: validate,
 		};
 	},
 };

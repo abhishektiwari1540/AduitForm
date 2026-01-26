@@ -213,7 +213,7 @@ function curlyWrapFixer(sourceCode, node, fixer) {
 // Rule Definition
 //------------------------------------------------------------------------------
 
-/** @type {import('../shared/types').Rule} */
+/** @type {import('../types').Rule.RuleModule} */
 module.exports = {
 	meta: {
 		type: "problem",
@@ -233,7 +233,6 @@ module.exports = {
 			url: "https://eslint.org/docs/latest/rules/array-callback-return",
 		},
 
-		// eslint-disable-next-line eslint-plugin/require-meta-has-suggestions -- false positive
 		hasSuggestions: true,
 
 		schema: [

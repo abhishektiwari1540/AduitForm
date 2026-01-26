@@ -23,6 +23,7 @@ const optionator = require("optionator");
  * @property {string} [cacheLocation] Path to the cache file or directory
  * @property {"metadata" | "content"} cacheStrategy Strategy to use for detecting changed files in the cache
  * @property {boolean} [color] Force enabling/disabling of color
+ * @property {number | "auto" | "off"} [concurrency] Number of linting threads, "auto" to choose automatically, "off" for no multithreading
  * @property {string} [config] Use this configuration, overriding .eslintrc.* config options if present
  * @property {boolean} debug Output debugging information
  * @property {string[]} [env] Specify environments
@@ -46,22 +47,27 @@ const optionator = require("optionator");
  * @property {string} [outputFile] Specify file to write report to
  * @property {string} [parser] Specify the parser to be used
  * @property {Object} [parserOptions] Specify parser options
+ * @property {boolean} [passOnNoPatterns=false] When set to true, missing patterns cause
+ *      the linting operation to short circuit and not report any failures.
+ * @property {boolean} [passOnUnprunedSuppressions] Ignore unused suppressions
  * @property {string[]} [plugin] Specify plugins
  * @property {string} [printConfig] Print the configuration for the given file
+ * @property {boolean} [pruneSuppressions] Prune unused suppressions
+ * @property {boolean} quiet Report errors only
  * @property {boolean | undefined} reportUnusedDisableDirectives Adds reported errors for unused eslint-disable and eslint-enable directives
  * @property {string | undefined} reportUnusedDisableDirectivesSeverity A severity string indicating if and how unused disable and enable directives should be tracked and reported.
  * @property {string} [resolvePluginsRelativeTo] A folder where plugins should be resolved from, CWD by default
  * @property {Object} [rule] Specify rules
  * @property {string[]} [rulesdir] Load additional rules from this directory. Deprecated: Use rules from plugins
+ * @property {boolean} [stats] Report additional statistics
  * @property {boolean} stdin Lint code provided on <STDIN>
  * @property {string} [stdinFilename] Specify filename to process STDIN as
- * @property {boolean} quiet Report errors only
+ * @property {boolean} [suppressAll] Suppress all error violations
+ * @property {string} [suppressionsLocation] Path to the suppressions file or directory
+ * @property {string[]} [suppressRule] Suppress specific rules
  * @property {boolean} [version] Output the version number
  * @property {boolean} warnIgnored Show warnings when the file list includes ignored files
- * @property {boolean} [passOnNoPatterns=false] When set to true, missing patterns cause
- *      the linting operation to short circuit and not report any failures.
  * @property {string[]} _ Positional filenames or patterns
- * @property {boolean} [stats] Report additional statistics
  */
 
 //------------------------------------------------------------------------------
@@ -206,6 +212,28 @@ module.exports = function (usingFlatConfig) {
 			description:
 				"Adds reported errors for unused eslint inline config comments",
 			enum: ["off", "warn", "error", "0", "1", "2"],
+		};
+	}
+
+	let mcpFlag;
+
+	if (usingFlatConfig) {
+		mcpFlag = {
+			option: "mcp",
+			type: "Boolean",
+			description: "Start the ESLint MCP server",
+		};
+	}
+
+	let concurrencyFlag;
+
+	if (usingFlatConfig) {
+		concurrencyFlag = {
+			option: "concurrency",
+			type: "Int|String",
+			default: "off",
+			description:
+				"Number of linting threads, auto to choose automatically, off for no multithreading",
 		};
 	}
 
@@ -411,6 +439,37 @@ module.exports = function (usingFlatConfig) {
 					"Strategy to use for detecting changed files in the cache",
 			},
 			{
+				heading: "Suppressing Violations",
+			},
+			{
+				option: "suppress-all",
+				type: "Boolean",
+				default: "false",
+				description: "Suppress all violations",
+			},
+			{
+				option: "suppress-rule",
+				type: "[String]",
+				description: "Suppress specific rules",
+			},
+			{
+				option: "suppressions-location",
+				type: "path::String",
+				description: "Specify the location of the suppressions file",
+			},
+			{
+				option: "prune-suppressions",
+				type: "Boolean",
+				default: "false",
+				description: "Prune unused suppressions",
+			},
+			{
+				option: "pass-on-unpruned-suppressions",
+				type: "Boolean",
+				default: "false",
+				description: "Ignore unused suppressions",
+			},
+			{
 				heading: "Miscellaneous",
 			},
 			{
@@ -470,6 +529,8 @@ module.exports = function (usingFlatConfig) {
 			},
 			statsFlag,
 			flagFlag,
+			mcpFlag,
+			concurrencyFlag,
 		].filter(value => !!value),
 	});
 };

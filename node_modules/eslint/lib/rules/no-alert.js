@@ -24,7 +24,7 @@ const {
  * @returns {boolean} Whether or not the name is prohibited.
  */
 function isProhibitedIdentifier(name) {
-	return /^(alert|confirm|prompt)$/u.test(name);
+	return /^(?:alert|confirm|prompt)$/u.test(name);
 }
 
 /**
@@ -86,7 +86,7 @@ function isGlobalThisReferenceOrGlobalWindow(scope, node) {
 // Rule Definition
 //------------------------------------------------------------------------------
 
-/** @type {import('../shared/types').Rule} */
+/** @type {import('../types').Rule.RuleModule} */
 module.exports = {
 	meta: {
 		type: "suggestion",

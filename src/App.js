@@ -8,6 +8,7 @@ import Home from './pages/Home';
 import AuditFront from './pages/AuditFront';
 import AuditEditor from './pages/AuditEditor';
 import AuditQuestionEditor from './pages/AuditQuestionEditor';
+import WhatsAppCamera from './pages/WhatsAppCamera';
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
           <Route path="/audit-editor/:id" element={<AuditQuestionEditor />} />
           <Route path="/audit-question-editor" element={<AuditQuestionEditor />} />
           <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/whatsapp-camera" element={<WhatsAppCamera />} />
         </Routes>
         
         {/* Install Prompt */}
