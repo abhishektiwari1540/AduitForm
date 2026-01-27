@@ -24,6 +24,7 @@ import {
   MdBrush,
   MdCircle,
   MdSquare,
+  MdDelete,
 } from "react-icons/md";
 import { FaArrowRight } from "react-icons/fa";
 import { Link } from 'react-router-dom';
@@ -395,15 +396,22 @@ function CameraModal({
   const [rotation, setRotation] = useState(0);
   const [brightness, setBrightness] = useState(100);
 
-  // Drawing states (from second code)
+  // Drawing states
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawColor, setDrawColor] = useState('#ff0000');
-  const [drawTool, setDrawTool] = useState('pen'); // 'pen', 'arrow', 'circle', 'square', 'text'
+  const [drawTool, setDrawTool] = useState('pen');
   const [drawHistory, setDrawHistory] = useState([]);
   const [historyStep, setHistoryStep] = useState(-1);
   const [startPoint, setStartPoint] = useState(null);
   const [textInput, setTextInput] = useState('');
   const [textPosition, setTextPosition] = useState(null);
+  const [tempElement, setTempElement] = useState(null);
+  const [elements, setElements] = useState([]);
+  const [selectedElement, setSelectedElement] = useState(null);
+  const [isDraggingElement, setIsDraggingElement] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [showDeleteZone, setShowDeleteZone] = useState(false);
+  const [isOverDeleteZone, setIsOverDeleteZone] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -465,6 +473,18 @@ function CameraModal({
     };
   }, [isOpen, mode]);
 
+  useEffect(() => {
+    if (isCropping && imageToEdit && imageDimensions.width) {
+      // Set crop to cover entire image by default
+      setCropRect({
+        x: 0,
+        y: 0,
+        width: imageDimensions.width,
+        height: imageDimensions.height
+      });
+    }
+  }, [isCropping, imageToEdit, imageDimensions]);
+
   const initializeVideoRecorder = async () => {
     try {
       const constraints = {
@@ -524,19 +544,12 @@ function CameraModal({
     ctx.drawImage(video, 0, 0);
     const dataUrl = canvas.toDataURL("image/png");
     
-    // Set image for editing
     setImageToEdit(dataUrl);
-    setImageDimensions({ width: video.videoWidth, height: video.videoHeight });
-    
-    // Initialize crop rectangle
-    const rectWidth = video.videoWidth * 0.8;
-    const rectHeight = video.videoHeight * 0.8;
-    setCropRect({
-      x: (video.videoWidth - rectWidth) / 2,
-      y: (video.videoHeight - rectHeight) / 2,
-      width: rectWidth,
-      height: rectHeight
-    });
+    const img = new Image();
+    img.src = dataUrl;
+    img.onload = () => {
+      setImageDimensions({ width: img.width, height: img.height });
+    };
     
     setIsCropping(true);
   };
@@ -552,16 +565,6 @@ function CameraModal({
         img.onload = () => {
           setImageToEdit(ev.target.result);
           setImageDimensions({ width: img.width, height: img.height });
-          
-          const rectWidth = img.width * 0.8;
-          const rectHeight = img.height * 0.8;
-          setCropRect({
-            x: (img.width - rectWidth) / 2,
-            y: (img.height - rectHeight) / 2,
-            width: rectWidth,
-            height: rectHeight
-          });
-          
           setIsCropping(true);
         };
         img.src = ev.target.result;
@@ -572,37 +575,20 @@ function CameraModal({
     reader.readAsDataURL(file);
   };
 
-  // Drawing functions (from second code)
+  // Drawing functions
   const getCanvasCoordinates = (e) => {
     if (!containerRef.current) return { x: 0, y: 0 };
     
     const container = containerRef.current;
     const rect = container.getBoundingClientRect();
-    const img = new Image();
-    img.src = imageToEdit;
     
-    // Calculate scale to maintain aspect ratio
-    const containerRatio = rect.width / rect.height;
-    const imageRatio = img.width / img.height;
+    const scaleX = imageDimensions.width / rect.width;
+    const scaleY = imageDimensions.height / rect.height;
+    const scale = Math.min(scaleX, scaleY);
     
-    let displayWidth, displayHeight, offsetX, offsetY;
+    const offsetX = (rect.width - imageDimensions.width / scale) / 2;
+    const offsetY = (rect.height - imageDimensions.height / scale) / 2;
     
-    if (containerRatio > imageRatio) {
-      // Container is wider than image
-      displayHeight = rect.height;
-      displayWidth = img.width * (rect.height / img.height);
-      offsetX = (rect.width - displayWidth) / 2;
-      offsetY = 0;
-    } else {
-      // Container is taller than image
-      displayWidth = rect.width;
-      displayHeight = img.height * (rect.width / img.width);
-      offsetX = 0;
-      offsetY = (rect.height - displayHeight) / 2;
-    }
-    
-    // Convert mouse coordinates to image coordinates
-    const scale = img.width / displayWidth;
     const x = (e.clientX - rect.left - offsetX) * scale;
     const y = (e.clientY - rect.top - offsetY) * scale;
     
@@ -610,102 +596,233 @@ function CameraModal({
   };
 
   const handleMouseDown = (e) => {
-    if (editorMode !== 'draw' || drawTool === 'text') return;
-    setIsDrawing(true);
+    if (editorMode !== 'draw') return;
+    
     const coords = getCanvasCoordinates(e);
+    
+    // Check if clicking on an existing element
+    const clickedElement = findElementAtPosition(coords.x, coords.y);
+    
+    if (clickedElement) {
+      setSelectedElement(clickedElement);
+      const offsetX = coords.x - clickedElement.x;
+      const offsetY = coords.y - clickedElement.y;
+      setDragOffset({ x: offsetX, y: offsetY });
+      setIsDraggingElement(true);
+      setShowDeleteZone(true);
+      return;
+    }
+    
+    // Deselect if clicking empty space
+    setSelectedElement(null);
+    
+    // Start new drawing
+    if (drawTool === 'text') {
+      setTextPosition(coords);
+      return;
+    }
+    
+    setIsDrawing(true);
     setStartPoint(coords);
     
     if (drawTool === 'pen') {
-      const canvas = drawingCanvasRef.current;
-      const ctx = canvas.getContext('2d');
-      ctx.beginPath();
-      ctx.moveTo(coords.x, coords.y);
+      setTempElement({
+        type: 'pen',
+        color: drawColor,
+        points: [coords],
+        width: 3
+      });
+    } else {
+      setTempElement({
+        type: drawTool,
+        color: drawColor,
+        x: coords.x,
+        y: coords.y,
+        width: 0,
+        height: 0
+      });
     }
+  };
+
+  const findElementAtPosition = (x, y) => {
+    for (const element of elements) {
+      if (isPointInElement(x, y, element)) {
+        return element;
+      }
+    }
+    return null;
+  };
+
+  const isPointInElement = (x, y, element) => {
+    if (element.type === 'pen') {
+      // Check if point is near any pen stroke
+      for (let i = 0; i < element.points.length - 1; i++) {
+        const p1 = element.points[i];
+        const p2 = element.points[i + 1];
+        const distance = pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y);
+        if (distance < 10) return true;
+      }
+      return false;
+    } else if (element.type === 'text') {
+      const bounds = getTextBounds(element);
+      return x >= bounds.x - 10 && x <= bounds.x + bounds.width + 10 &&
+             y >= bounds.y - bounds.height - 10 && y <= bounds.y + 10;
+    } else if (element.type === 'circle') {
+      const radius = Math.sqrt(Math.pow(element.width, 2) + Math.pow(element.height, 2));
+      const distance = Math.sqrt(Math.pow(x - element.x, 2) + Math.pow(y - element.y, 2));
+      return Math.abs(distance - radius) < 15;
+    } else {
+      // For arrow, square
+      const bounds = getElementBounds(element);
+      return x >= bounds.x - 10 && x <= bounds.x + bounds.width + 10 &&
+             y >= bounds.y - 10 && y <= bounds.y + bounds.height + 10;
+    }
+  };
+
+  const pointToLineDistance = (x, y, x1, y1, x2, y2) => {
+    const A = x - x1;
+    const B = y - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = -1;
+    
+    if (lenSq !== 0) param = dot / lenSq;
+
+    let xx, yy;
+
+    if (param < 0) {
+      xx = x1;
+      yy = y1;
+    } else if (param > 1) {
+      xx = x2;
+      yy = y2;
+    } else {
+      xx = x1 + param * C;
+      yy = y1 + param * D;
+    }
+
+    const dx = x - xx;
+    const dy = y - yy;
+    return Math.sqrt(dx * dx + dy * dy);
   };
 
   const handleMouseMove = (e) => {
-    if (!isDrawing || editorMode !== 'draw') return;
+    if (editorMode !== 'draw') return;
+    
     const coords = getCanvasCoordinates(e);
-    const canvas = drawingCanvasRef.current;
-    const ctx = canvas.getContext('2d');
+    
+    if (isDraggingElement && selectedElement) {
+      // Check if over delete zone
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const deleteZoneTop = 50; // Top 50px is delete zone
+      const isOverDelete = e.clientY - containerRect.top < deleteZoneTop;
+      setIsOverDeleteZone(isOverDelete);
+      
+      // Update element position
+      const newX = coords.x - dragOffset.x;
+      const newY = coords.y - dragOffset.y;
+      
+      const updatedElements = elements.map(el => 
+        el.id === selectedElement.id 
+          ? { ...el, x: newX, y: newY }
+          : el
+      );
+      setElements(updatedElements);
+      return;
+    }
+    
+    if (!isDrawing) return;
     
     if (drawTool === 'pen') {
-      ctx.strokeStyle = drawColor;
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
-      ctx.lineTo(coords.x, coords.y);
-      ctx.stroke();
+      setTempElement(prev => ({
+        ...prev,
+        points: [...prev.points, coords]
+      }));
+    } else {
+      setTempElement(prev => ({
+        ...prev,
+        width: coords.x - prev.x,
+        height: coords.y - prev.y
+      }));
     }
   };
 
-  const handleMouseUp = (e) => {
-    if (!isDrawing || editorMode !== 'draw') return;
-    const coords = getCanvasCoordinates(e);
-    const canvas = drawingCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    
-    ctx.strokeStyle = drawColor;
-    ctx.fillStyle = drawColor;
-    ctx.lineWidth = 3;
-    
-    if (drawTool === 'arrow') {
-      drawArrow(ctx, startPoint.x, startPoint.y, coords.x, coords.y);
-    } else if (drawTool === 'circle') {
-      const radius = Math.sqrt(Math.pow(coords.x - startPoint.x, 2) + Math.pow(coords.y - startPoint.y, 2));
-      ctx.beginPath();
-      ctx.arc(startPoint.x, startPoint.y, radius, 0, 2 * Math.PI);
-      ctx.stroke();
-    } else if (drawTool === 'square') {
-      const width = coords.x - startPoint.x;
-      const height = coords.y - startPoint.y;
-      ctx.strokeRect(startPoint.x, startPoint.y, width, height);
+  const handleMouseUp = () => {
+    if (isDraggingElement && selectedElement) {
+      // If dropped in delete zone, delete the element
+      if (isOverDeleteZone) {
+        deleteElement(selectedElement);
+      }
+      
+      setIsDraggingElement(false);
+      setIsOverDeleteZone(false);
+      setShowDeleteZone(false);
+      saveDrawingState();
+      return;
     }
+    
+    if (!isDrawing || !tempElement) return;
+    
+    if (drawTool === 'pen' && tempElement.points.length < 2) {
+      setIsDrawing(false);
+      setTempElement(null);
+      return;
+    }
+    
+    const newElement = {
+      ...tempElement,
+      id: Date.now() + Math.random()
+    };
+    
+    setElements([...elements, newElement]);
+    saveDrawingState();
     
     setIsDrawing(false);
-    saveDrawingState();
-  };
-
-  const drawArrow = (ctx, fromX, fromY, toX, toY) => {
-    const headLength = 15;
-    const angle = Math.atan2(toY - fromY, toX - fromX);
-    
-    ctx.beginPath();
-    ctx.moveTo(fromX, fromY);
-    ctx.lineTo(toX, toY);
-    ctx.stroke();
-    
-    ctx.beginPath();
-    ctx.moveTo(toX, toY);
-    ctx.lineTo(toX - headLength * Math.cos(angle - Math.PI / 6), toY - headLength * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(toX - headLength * Math.cos(angle + Math.PI / 6), toY - headLength * Math.sin(angle + Math.PI / 6));
-    ctx.lineTo(toX, toY);
-    ctx.fill();
+    setTempElement(null);
   };
 
   const handleCanvasClick = (e) => {
     if (editorMode !== 'draw' || drawTool !== 'text') return;
     const coords = getCanvasCoordinates(e);
     setTextPosition(coords);
+    setSelectedElement(null);
   };
 
   const handleTextSubmit = () => {
     if (!textInput || !textPosition) return;
     
-    const canvas = drawingCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = drawColor;
-    ctx.font = '24px Arial';
-    ctx.fillText(textInput, textPosition.x, textPosition.y);
+    const newElement = {
+      id: Date.now() + Math.random(),
+      type: 'text',
+      color: drawColor,
+      text: textInput,
+      x: textPosition.x,
+      y: textPosition.y,
+      fontSize: 24
+    };
+    
+    setElements([...elements, newElement]);
+    saveDrawingState();
     
     setTextInput('');
     setTextPosition(null);
-    saveDrawingState();
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && textInput.trim()) {
+      handleTextSubmit();
+    }
   };
 
   const saveDrawingState = () => {
-    const canvas = drawingCanvasRef.current;
     const newHistory = drawHistory.slice(0, historyStep + 1);
-    newHistory.push(canvas.toDataURL());
+    newHistory.push({
+      elements: [...elements],
+      timestamp: Date.now()
+    });
     setDrawHistory(newHistory);
     setHistoryStep(newHistory.length - 1);
   };
@@ -713,27 +830,165 @@ function CameraModal({
   const handleUndo = () => {
     if (historyStep > 0) {
       setHistoryStep(historyStep - 1);
-      restoreDrawingState(historyStep - 1);
+      setElements(drawHistory[historyStep - 1].elements);
     }
   };
 
   const handleRedo = () => {
     if (historyStep < drawHistory.length - 1) {
       setHistoryStep(historyStep + 1);
-      restoreDrawingState(historyStep + 1);
+      setElements(drawHistory[historyStep + 1].elements);
     }
   };
 
-  const restoreDrawingState = (step) => {
+  const deleteElement = (element) => {
+    const newElements = elements.filter(el => el.id !== element.id);
+    setElements(newElements);
+    setSelectedElement(null);
+    saveDrawingState();
+  };
+
+  const getElementBounds = (element) => {
+    if (element.type === 'arrow') {
+      return {
+        x: Math.min(element.x, element.x + element.width),
+        y: Math.min(element.y, element.y + element.height),
+        width: Math.abs(element.width),
+        height: Math.abs(element.height)
+      };
+    } else if (element.type === 'pen') {
+      const minX = Math.min(...element.points.map(p => p.x));
+      const minY = Math.min(...element.points.map(p => p.y));
+      const maxX = Math.max(...element.points.map(p => p.x));
+      const maxY = Math.max(...element.points.map(p => p.y));
+      return {
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY
+      };
+    } else if (element.type === 'circle') {
+      const radius = Math.sqrt(Math.pow(element.width, 2) + Math.pow(element.height, 2));
+      return {
+        x: element.x - radius,
+        y: element.y - radius,
+        width: radius * 2,
+        height: radius * 2
+      };
+    } else if (element.type === 'text') {
+      return getTextBounds(element);
+    }
+    return element;
+  };
+
+  const getTextBounds = (element) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = `${element.fontSize}px Arial`;
+    const width = ctx.measureText(element.text).width;
+    return {
+      x: element.x,
+      y: element.y,
+      width: width,
+      height: element.fontSize
+    };
+  };
+
+  const drawElement = (ctx, element, isSelected = false) => {
+    ctx.strokeStyle = element.color;
+    ctx.fillStyle = element.color;
+    ctx.lineWidth = element.type === 'pen' ? element.width : 2;
+    
+    if (element.type === 'pen') {
+      ctx.beginPath();
+      ctx.moveTo(element.points[0].x, element.points[0].y);
+      element.points.forEach(point => {
+        ctx.lineTo(point.x, point.y);
+      });
+      ctx.stroke();
+    } else if (element.type === 'arrow') {
+      const fromX = element.x;
+      const fromY = element.y;
+      const toX = element.x + element.width;
+      const toY = element.y + element.height;
+      
+      const headLength = 15;
+      const angle = Math.atan2(toY - fromY, toX - fromX);
+      
+      ctx.beginPath();
+      ctx.moveTo(fromX, fromY);
+      ctx.lineTo(toX, toY);
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.moveTo(toX, toY);
+      ctx.lineTo(toX - headLength * Math.cos(angle - Math.PI / 6), toY - headLength * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(toX - headLength * Math.cos(angle + Math.PI / 6), toY - headLength * Math.sin(angle + Math.PI / 6));
+      ctx.lineTo(toX, toY);
+      ctx.fill();
+    } else if (element.type === 'circle') {
+      const radius = Math.sqrt(Math.pow(element.width, 2) + Math.pow(element.height, 2));
+      ctx.beginPath();
+      ctx.arc(element.x, element.y, radius, 0, 2 * Math.PI);
+      ctx.stroke();
+    } else if (element.type === 'square') {
+      ctx.strokeRect(element.x, element.y, element.width, element.height);
+    } else if (element.type === 'text') {
+      ctx.font = `${element.fontSize}px Arial`;
+      ctx.fillText(element.text, element.x, element.y);
+    }
+    
+    // Draw selection border (no delete X)
+    if (isSelected) {
+      const bounds = getElementBounds(element);
+      
+      // Draw selection border
+      ctx.strokeStyle = '#10b981';
+      ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(bounds.x - 5, bounds.y - 5, bounds.width + 10, bounds.height + 10);
+      ctx.setLineDash([]);
+    }
+  };
+
+  const renderDrawing = () => {
+    if (!drawingCanvasRef.current || !imageDimensions.width) return;
+    
     const canvas = drawingCanvasRef.current;
     const ctx = canvas.getContext('2d');
-    const img = new Image();
-    img.onload = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0);
-    };
-    img.src = drawHistory[step];
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw all elements
+    elements.forEach(element => {
+      drawElement(ctx, element, selectedElement?.id === element.id);
+    });
+    
+    // Draw temporary element
+    if (tempElement) {
+      drawElement(ctx, tempElement);
+    }
   };
+
+  useEffect(() => {
+    renderDrawing();
+  }, [elements, tempElement, selectedElement, imageDimensions]);
+
+  useEffect(() => {
+    if (imageToEdit && editorMode === 'draw' && drawingCanvasRef.current) {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = drawingCanvasRef.current;
+        canvas.width = img.width;
+        canvas.height = img.height;
+        setElements([]);
+        setDrawHistory([]);
+        setHistoryStep(-1);
+      };
+      img.src = imageToEdit;
+    }
+  }, [imageToEdit, editorMode]);
 
   const handleSaveImage = async () => {
     if (!imageToEdit) return;
@@ -774,21 +1029,17 @@ function CameraModal({
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(canvas, 0, 0);
         
-        // Draw annotations from drawing canvas
-        if (drawingCanvasRef.current) {
-          const drawCanvas = drawingCanvasRef.current;
+        // Draw annotations
+        const drawCanvas = drawingCanvasRef.current;
+        if (drawCanvas) {
           const drawCtx = drawCanvas.getContext('2d');
-          
-          // Create a temporary canvas for drawing transformations
           const tempCanvas = document.createElement('canvas');
           const tempCtx = tempCanvas.getContext('2d');
           tempCanvas.width = drawCanvas.width;
           tempCanvas.height = drawCanvas.height;
           
-          // Copy drawing to temp canvas
           tempCtx.drawImage(drawCanvas, 0, 0);
           
-          // Draw cropped portion of annotations
           ctx.drawImage(
             tempCanvas,
             cropRect.x, cropRect.y, cropRect.width, cropRect.height,
@@ -823,6 +1074,7 @@ function CameraModal({
     setIsCropping(false);
     setIsRecording(false);
     setRecordedVideo(null);
+    setElements([]);
     setDrawHistory([]);
     setHistoryStep(-1);
     setRotation(0);
@@ -832,6 +1084,9 @@ function CameraModal({
     setDrawTool('pen');
     setTextInput('');
     setTextPosition(null);
+    setSelectedElement(null);
+    setShowDeleteZone(false);
+    setIsOverDeleteZone(false);
   };
 
   const renderCropOverlay = () => {
@@ -861,7 +1116,6 @@ function CameraModal({
           cursor: 'move'
         }}
         onMouseDown={(e) => {
-          // Simple crop area adjustment - can be enhanced for drag handles
           const startX = e.clientX;
           const startY = e.clientY;
           const startCrop = { ...cropRect };
@@ -897,7 +1151,7 @@ function CameraModal({
           backgroundColor: 'rgba(0, 0, 0, 0.5)'
         }} />
         
-        {/* Crop rectangle */}
+        {/* Crop rectangle - now full image by default */}
         <div
           style={{
             position: 'absolute',
@@ -999,22 +1253,6 @@ function CameraModal({
       </div>
     );
   };
-
-  useEffect(() => {
-    if (imageToEdit && editorMode === 'draw' && drawingCanvasRef.current) {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = drawingCanvasRef.current;
-        canvas.width = img.width;
-        canvas.height = img.height;
-        // Initialize with blank canvas
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        saveDrawingState();
-      };
-      img.src = imageToEdit;
-    }
-  }, [imageToEdit, editorMode]);
 
   if (!isOpen) return null;
 
@@ -1150,9 +1388,41 @@ function CameraModal({
                   height: '100%',
                   objectFit: 'contain',
                   transform: `rotate(${rotation}deg)`,
-                  filter: `brightness(${brightness}%)`
+                  filter: `brightness(${brightness}%)`,
+                  ...(textPosition && {
+                    filter: `brightness(${brightness}%) blur(2px)`,
+                    opacity: 0.7
+                  })
                 }}
               />
+              
+              {/* Delete Zone (shown when dragging element) */}
+              {showDeleteZone && (
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: '50px',
+                  backgroundColor: isOverDeleteZone ? 'rgba(239, 68, 68, 0.8)' : 'rgba(239, 68, 68, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'background-color 0.3s ease',
+                  zIndex: 50
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    color: 'white',
+                    fontWeight: '600'
+                  }}>
+                    <MdDelete size={24} />
+                    <span>Drag here to delete</span>
+                  </div>
+                </div>
+              )}
               
               {editorMode === 'crop' && renderCropOverlay()}
               
@@ -1169,6 +1439,90 @@ function CameraModal({
                     cursor: drawTool === 'text' ? 'text' : 'crosshair'
                   }}
                 />
+              )}
+              
+              {/* Text Input Overlay (transparent, no X button) */}
+              {textPosition && (
+                <div style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                  padding: '1rem',
+                  borderRadius: '0.5rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                  minWidth: '300px',
+                  zIndex: 100,
+                  backdropFilter: 'blur(4px)'
+                }}>
+                  <span style={{ 
+                    color: 'white', 
+                    fontWeight: '600',
+                    fontSize: '0.9rem',
+                    marginBottom: '0.5rem'
+                  }}>
+                    Add Text
+                  </span>
+                  <input
+                    type="text"
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                    placeholder="Type text and press Enter..."
+                    autoFocus
+                    style={{
+                      padding: '0.75rem',
+                      borderRadius: '0.25rem',
+                      border: '1px solid #4b5563',
+                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                      color: 'white',
+                      fontSize: '1rem'
+                    }}
+                    onKeyPress={handleKeyPress}
+                  />
+                  <div style={{
+                    display: 'flex',
+                    gap: '0.5rem',
+                    justifyContent: 'flex-end',
+                    marginTop: '0.5rem'
+                  }}>
+                    <button
+                      onClick={() => {
+                        setTextPosition(null);
+                        setTextInput('');
+                      }}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        backgroundColor: 'rgba(107, 114, 128, 0.5)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.25rem',
+                        cursor: 'pointer',
+                        fontSize: '0.875rem'
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleTextSubmit}
+                      disabled={!textInput.trim()}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        backgroundColor: textInput.trim() ? '#10b981' : '#4b5563',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.25rem',
+                        cursor: textInput.trim() ? 'pointer' : 'not-allowed',
+                        fontSize: '0.875rem',
+                        opacity: textInput.trim() ? 1 : 0.5
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           ) : preview ? (
@@ -1362,7 +1716,7 @@ function CameraModal({
                           fontSize: "0.9rem",
                           border: "none",
                           cursor: "pointer",
-                          display: "flex",
+                          display: 'flex',
                           alignItems: 'center',
                           gap: "0.5rem",
                           boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)"
@@ -1559,7 +1913,8 @@ function CameraModal({
                   display: 'flex',
                   gap: '0.5rem',
                   justifyContent: 'center',
-                  alignItems: 'center'
+                  alignItems: 'center',
+                  marginTop: '0.5rem'
                 }}>
                   <span style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Color:</span>
                   {['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#ffffff', '#000000'].map(color => (
@@ -1576,6 +1931,20 @@ function CameraModal({
                       }}
                     />
                   ))}
+                </div>
+                
+                {/* Instructions */}
+                <div style={{
+                  textAlign: 'center',
+                  color: '#9ca3af',
+                  fontSize: '0.75rem',
+                  padding: '0.5rem'
+                }}>
+                  {selectedElement ? (
+                    <span>Drag to move • Drag to top red zone to delete • Click outside to deselect</span>
+                  ) : (
+                    <span>Click to select • Click and drag to draw • Click anywhere to add text</span>
+                  )}
                 </div>
                 
                 {/* Undo/Redo */}
@@ -1623,46 +1992,6 @@ function CameraModal({
                     Redo
                   </button>
                 </div>
-                
-                {/* Text Input */}
-                {textPosition && (
-                  <div style={{
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    padding: '0.5rem',
-                    borderRadius: '0.5rem',
-                    display: 'flex',
-                    gap: '0.5rem'
-                  }}>
-                    <input
-                      type="text"
-                      value={textInput}
-                      onChange={(e) => setTextInput(e.target.value)}
-                      placeholder="Enter text..."
-                      autoFocus
-                      style={{
-                        flex: 1,
-                        padding: '0.5rem',
-                        borderRadius: '0.25rem',
-                        border: 'none',
-                        backgroundColor: '#374151',
-                        color: 'white'
-                      }}
-                    />
-                    <button
-                      onClick={handleTextSubmit}
-                      style={{
-                        padding: '0.5rem 1rem',
-                        backgroundColor: '#10b981',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '0.25rem',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Add
-                    </button>
-                  </div>
-                )}
               </div>
             )}
 
@@ -1883,5 +2212,5 @@ function CameraModal({
         )}
       </div>
     </div>
-  );
+  );    
 }
