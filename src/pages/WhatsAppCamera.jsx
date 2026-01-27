@@ -21,7 +21,11 @@ import {
   MdUndo,
   MdRedo,
   MdDownload,
+  MdBrush,
+  MdCircle,
+  MdSquare,
 } from "react-icons/md";
+import { FaArrowRight } from "react-icons/fa";
 import { Link } from 'react-router-dom';
 
 export default function WhatsAppCamera() {
@@ -362,7 +366,7 @@ export default function WhatsAppCamera() {
   );
 }
 
-// CameraModal Component - Simplified to avoid ref errors
+// CameraModal Component - Combined features
 function CameraModal({
   isOpen,
   onClose,
@@ -371,6 +375,7 @@ function CameraModal({
 }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const drawingCanvasRef = useRef(null);
   const containerRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const [stream, setStream] = useState(null);
@@ -390,11 +395,15 @@ function CameraModal({
   const [rotation, setRotation] = useState(0);
   const [brightness, setBrightness] = useState(100);
 
-  // Drawing states
-  const [drawingTool, setDrawingTool] = useState('square');
-  const [drawingColor, setDrawingColor] = useState('#dc2626');
-  const [drawingWidth, setDrawingWidth] = useState(3);
-  const [shapes, setShapes] = useState([]);
+  // Drawing states (from second code)
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [drawColor, setDrawColor] = useState('#ff0000');
+  const [drawTool, setDrawTool] = useState('pen'); // 'pen', 'arrow', 'circle', 'square', 'text'
+  const [drawHistory, setDrawHistory] = useState([]);
+  const [historyStep, setHistoryStep] = useState(-1);
+  const [startPoint, setStartPoint] = useState(null);
+  const [textInput, setTextInput] = useState('');
+  const [textPosition, setTextPosition] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -563,6 +572,169 @@ function CameraModal({
     reader.readAsDataURL(file);
   };
 
+  // Drawing functions (from second code)
+  const getCanvasCoordinates = (e) => {
+    if (!containerRef.current) return { x: 0, y: 0 };
+    
+    const container = containerRef.current;
+    const rect = container.getBoundingClientRect();
+    const img = new Image();
+    img.src = imageToEdit;
+    
+    // Calculate scale to maintain aspect ratio
+    const containerRatio = rect.width / rect.height;
+    const imageRatio = img.width / img.height;
+    
+    let displayWidth, displayHeight, offsetX, offsetY;
+    
+    if (containerRatio > imageRatio) {
+      // Container is wider than image
+      displayHeight = rect.height;
+      displayWidth = img.width * (rect.height / img.height);
+      offsetX = (rect.width - displayWidth) / 2;
+      offsetY = 0;
+    } else {
+      // Container is taller than image
+      displayWidth = rect.width;
+      displayHeight = img.height * (rect.width / img.width);
+      offsetX = 0;
+      offsetY = (rect.height - displayHeight) / 2;
+    }
+    
+    // Convert mouse coordinates to image coordinates
+    const scale = img.width / displayWidth;
+    const x = (e.clientX - rect.left - offsetX) * scale;
+    const y = (e.clientY - rect.top - offsetY) * scale;
+    
+    return { x, y };
+  };
+
+  const handleMouseDown = (e) => {
+    if (editorMode !== 'draw' || drawTool === 'text') return;
+    setIsDrawing(true);
+    const coords = getCanvasCoordinates(e);
+    setStartPoint(coords);
+    
+    if (drawTool === 'pen') {
+      const canvas = drawingCanvasRef.current;
+      const ctx = canvas.getContext('2d');
+      ctx.beginPath();
+      ctx.moveTo(coords.x, coords.y);
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDrawing || editorMode !== 'draw') return;
+    const coords = getCanvasCoordinates(e);
+    const canvas = drawingCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    if (drawTool === 'pen') {
+      ctx.strokeStyle = drawColor;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.lineTo(coords.x, coords.y);
+      ctx.stroke();
+    }
+  };
+
+  const handleMouseUp = (e) => {
+    if (!isDrawing || editorMode !== 'draw') return;
+    const coords = getCanvasCoordinates(e);
+    const canvas = drawingCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    ctx.strokeStyle = drawColor;
+    ctx.fillStyle = drawColor;
+    ctx.lineWidth = 3;
+    
+    if (drawTool === 'arrow') {
+      drawArrow(ctx, startPoint.x, startPoint.y, coords.x, coords.y);
+    } else if (drawTool === 'circle') {
+      const radius = Math.sqrt(Math.pow(coords.x - startPoint.x, 2) + Math.pow(coords.y - startPoint.y, 2));
+      ctx.beginPath();
+      ctx.arc(startPoint.x, startPoint.y, radius, 0, 2 * Math.PI);
+      ctx.stroke();
+    } else if (drawTool === 'square') {
+      const width = coords.x - startPoint.x;
+      const height = coords.y - startPoint.y;
+      ctx.strokeRect(startPoint.x, startPoint.y, width, height);
+    }
+    
+    setIsDrawing(false);
+    saveDrawingState();
+  };
+
+  const drawArrow = (ctx, fromX, fromY, toX, toY) => {
+    const headLength = 15;
+    const angle = Math.atan2(toY - fromY, toX - fromX);
+    
+    ctx.beginPath();
+    ctx.moveTo(fromX, fromY);
+    ctx.lineTo(toX, toY);
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.moveTo(toX, toY);
+    ctx.lineTo(toX - headLength * Math.cos(angle - Math.PI / 6), toY - headLength * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(toX - headLength * Math.cos(angle + Math.PI / 6), toY - headLength * Math.sin(angle + Math.PI / 6));
+    ctx.lineTo(toX, toY);
+    ctx.fill();
+  };
+
+  const handleCanvasClick = (e) => {
+    if (editorMode !== 'draw' || drawTool !== 'text') return;
+    const coords = getCanvasCoordinates(e);
+    setTextPosition(coords);
+  };
+
+  const handleTextSubmit = () => {
+    if (!textInput || !textPosition) return;
+    
+    const canvas = drawingCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = drawColor;
+    ctx.font = '24px Arial';
+    ctx.fillText(textInput, textPosition.x, textPosition.y);
+    
+    setTextInput('');
+    setTextPosition(null);
+    saveDrawingState();
+  };
+
+  const saveDrawingState = () => {
+    const canvas = drawingCanvasRef.current;
+    const newHistory = drawHistory.slice(0, historyStep + 1);
+    newHistory.push(canvas.toDataURL());
+    setDrawHistory(newHistory);
+    setHistoryStep(newHistory.length - 1);
+  };
+
+  const handleUndo = () => {
+    if (historyStep > 0) {
+      setHistoryStep(historyStep - 1);
+      restoreDrawingState(historyStep - 1);
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyStep < drawHistory.length - 1) {
+      setHistoryStep(historyStep + 1);
+      restoreDrawingState(historyStep + 1);
+    }
+  };
+
+  const restoreDrawingState = (step) => {
+    const canvas = drawingCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+    };
+    img.src = drawHistory[step];
+  };
+
   const handleSaveImage = async () => {
     if (!imageToEdit) return;
     
@@ -602,16 +774,27 @@ function CameraModal({
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(canvas, 0, 0);
         
-        // Draw shapes
-        shapes.forEach(shape => {
-          ctx.strokeStyle = shape.color;
-          ctx.lineWidth = shape.width;
-          ctx.fillStyle = shape.color;
+        // Draw annotations from drawing canvas
+        if (drawingCanvasRef.current) {
+          const drawCanvas = drawingCanvasRef.current;
+          const drawCtx = drawCanvas.getContext('2d');
           
-          if (shape.type === 'square') {
-            ctx.strokeRect(shape.x - cropRect.x, shape.y - cropRect.y, shape.width, shape.height);
-          }
-        });
+          // Create a temporary canvas for drawing transformations
+          const tempCanvas = document.createElement('canvas');
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCanvas.width = drawCanvas.width;
+          tempCanvas.height = drawCanvas.height;
+          
+          // Copy drawing to temp canvas
+          tempCtx.drawImage(drawCanvas, 0, 0);
+          
+          // Draw cropped portion of annotations
+          ctx.drawImage(
+            tempCanvas,
+            cropRect.x, cropRect.y, cropRect.width, cropRect.height,
+            0, 0, canvas.width, canvas.height
+          );
+        }
         
         canvas.toBlob((blob) => {
           const url = URL.createObjectURL(blob);
@@ -630,36 +813,6 @@ function CameraModal({
     }
   };
 
-  const addShape = (e) => {
-    if (editorMode !== 'draw' || !containerRef.current) return;
-    
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    // Convert to image coordinates
-    const scaleX = imageDimensions.width / rect.width;
-    const scaleY = imageDimensions.height / rect.height;
-    const scale = Math.min(scaleX, scaleY);
-    
-    const offsetX = (rect.width - imageDimensions.width / scale) / 2;
-    const offsetY = (rect.height - imageDimensions.height / scale) / 2;
-    
-    const imgX = (x - offsetX) * scale;
-    const imgY = (y - offsetY) * scale;
-    
-    const newShape = {
-      type: drawingTool,
-      color: drawingColor,
-      width: 50, // Shape width
-      height: 50, // Shape height
-      x: imgX,
-      y: imgY
-    };
-    
-    setShapes([...shapes, newShape]);
-  };
-
   const handleRotate = (degrees) => {
     setRotation(prev => (prev + degrees) % 360);
   };
@@ -670,10 +823,15 @@ function CameraModal({
     setIsCropping(false);
     setIsRecording(false);
     setRecordedVideo(null);
-    setShapes([]);
+    setDrawHistory([]);
+    setHistoryStep(-1);
     setRotation(0);
     setBrightness(100);
     setEditorMode('crop');
+    setDrawColor('#ff0000');
+    setDrawTool('pen');
+    setTextInput('');
+    setTextPosition(null);
   };
 
   const renderCropOverlay = () => {
@@ -842,6 +1000,22 @@ function CameraModal({
     );
   };
 
+  useEffect(() => {
+    if (imageToEdit && editorMode === 'draw' && drawingCanvasRef.current) {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = drawingCanvasRef.current;
+        canvas.width = img.width;
+        canvas.height = img.height;
+        // Initialize with blank canvas
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        saveDrawingState();
+      };
+      img.src = imageToEdit;
+    }
+  }, [imageToEdit, editorMode]);
+
   if (!isOpen) return null;
 
   return (
@@ -859,7 +1033,7 @@ function CameraModal({
         zIndex: 20000
       }}
       onClick={() => {
-        if (!isCropping) {
+        if (!isCropping && !textPosition) {
           if (stream) {
             stream.getTracks().forEach(track => track.stop());
           }
@@ -963,11 +1137,10 @@ function CameraModal({
                 backgroundColor: "#000",
                 marginBottom: "1rem"
               }}
-              onClick={(e) => {
-                if (editorMode === 'draw') {
-                  addShape(e);
-                }
-              }}
+              onMouseDown={editorMode === 'draw' ? handleMouseDown : undefined}
+              onMouseMove={editorMode === 'draw' ? handleMouseMove : undefined}
+              onMouseUp={editorMode === 'draw' ? handleMouseUp : undefined}
+              onClick={editorMode === 'draw' ? handleCanvasClick : undefined}
             >
               <img
                 src={imageToEdit}
@@ -983,36 +1156,20 @@ function CameraModal({
               
               {editorMode === 'crop' && renderCropOverlay()}
               
-              {/* Draw shapes overlay */}
-              {shapes.map((shape, index) => {
-                if (!containerRef.current) return null;
-                
-                const rect = containerRef.current.getBoundingClientRect();
-                const scaleX = imageDimensions.width / rect.width;
-                const scaleY = imageDimensions.height / rect.height;
-                const scale = Math.min(scaleX, scaleY);
-                
-                const offsetX = (rect.width - imageDimensions.width / scale) / 2;
-                const offsetY = (rect.height - imageDimensions.height / scale) / 2;
-                
-                const screenX = (shape.x / scale) + offsetX;
-                const screenY = (shape.y / scale) + offsetY;
-                
-                return (
-                  <div
-                    key={index}
-                    style={{
-                      position: 'absolute',
-                      left: `${screenX}px`,
-                      top: `${screenY}px`,
-                      border: `2px solid ${shape.color}`,
-                      width: `${shape.width / scale}px`,
-                      height: `${shape.height / scale}px`,
-                      pointerEvents: 'none'
-                    }}
-                  />
-                );
-              })}
+              {/* Drawing Canvas Overlay */}
+              {editorMode === 'draw' && (
+                <canvas
+                  ref={drawingCanvasRef}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    cursor: drawTool === 'text' ? 'text' : 'crosshair'
+                  }}
+                />
+              )}
             </div>
           ) : preview ? (
             <div style={{
@@ -1206,7 +1363,7 @@ function CameraModal({
                           border: "none",
                           cursor: "pointer",
                           display: "flex",
-                          alignItems: "center",
+                          alignItems: 'center',
                           gap: "0.5rem",
                           boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)"
                         }}
@@ -1276,7 +1433,7 @@ function CameraModal({
                   transition: 'all 0.2s ease'
                 }}
               >
-                <MdOutlineSquare size={16} />
+                <MdBrush size={16} />
                 Draw
               </button>
               
@@ -1308,83 +1465,204 @@ function CameraModal({
                 gap: '0.75rem',
                 marginBottom: '1rem'
               }}>
+                {/* Drawing Tools Selection */}
                 <div style={{
                   display: 'flex',
+                  gap: '0.5rem',
                   justifyContent: 'center',
-                  gap: '0.5rem'
+                  flexWrap: 'wrap'
                 }}>
-                  {[
-                    { icon: MdOutlineSquare, tool: 'square', label: 'Square' },
-                    { icon: MdOutlineCircle, tool: 'circle', label: 'Circle' },
-                    { icon: MdArrowRightAlt, tool: 'arrow', label: 'Arrow' }
-                  ].map(({ icon: Icon, tool, label }) => (
-                    <button
-                      key={tool}
-                      onClick={() => setDrawingTool(tool)}
-                      style={{
-                        padding: '0.5rem',
-                        backgroundColor: drawingTool === tool ? '#10b981' : '#374151',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: '0.25rem',
-                        minWidth: '60px'
-                      }}
-                    >
-                      <Icon size={20} />
-                      <span style={{ fontSize: '0.7rem' }}>{label}</span>
-                    </button>
-                  ))}
-                </div>
-                
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  justifyContent: 'center'
-                }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem'
-                  }}>
-                    <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>Color:</span>
-                    <input
-                      type="color"
-                      value={drawingColor}
-                      onChange={(e) => setDrawingColor(e.target.value)}
-                      style={{
-                        width: '30px',
-                        height: '30px',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    />
-                  </div>
-                  
                   <button
-                    onClick={() => setShapes([])}
+                    onClick={() => setDrawTool('pen')}
                     style={{
-                      padding: '0.5rem 1rem',
-                      backgroundColor: '#ef4444',
+                      padding: '0.75rem',
+                      backgroundColor: drawTool === 'pen' ? '#10b981' : '#374151',
                       color: 'white',
                       border: 'none',
-                      borderRadius: '6px',
+                      borderRadius: '0.5rem',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '0.5rem'
+                      gap: '0.25rem'
                     }}
                   >
-                    <MdClose size={16} />
-                    Clear All
+                    <MdBrush size={20} />
+                  </button>
+                  <button
+                    onClick={() => setDrawTool('arrow')}
+                    style={{
+                      padding: '0.75rem',
+                      backgroundColor: drawTool === 'arrow' ? '#10b981' : '#374151',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem'
+                    }}
+                  >
+                    <FaArrowRight size={18} />
+                  </button>
+                  <button
+                    onClick={() => setDrawTool('circle')}
+                    style={{
+                      padding: '0.75rem',
+                      backgroundColor: drawTool === 'circle' ? '#10b981' : '#374151',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem'
+                    }}
+                  >
+                    <MdCircle size={20} />
+                  </button>
+                  <button
+                    onClick={() => setDrawTool('square')}
+                    style={{
+                      padding: '0.75rem',
+                      backgroundColor: drawTool === 'square' ? '#10b981' : '#374151',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem'
+                    }}
+                  >
+                    <MdSquare size={20} />
+                  </button>
+                  <button
+                    onClick={() => setDrawTool('text')}
+                    style={{
+                      padding: '0.75rem',
+                      backgroundColor: drawTool === 'text' ? '#10b981' : '#374151',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem'
+                    }}
+                  >
+                    <MdTextFields size={20} />
                   </button>
                 </div>
+                
+                {/* Color Selection */}
+                <div style={{
+                  display: 'flex',
+                  gap: '0.5rem',
+                  justifyContent: 'center',
+                  alignItems: 'center'
+                }}>
+                  <span style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Color:</span>
+                  {['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#ffffff', '#000000'].map(color => (
+                    <button
+                      key={color}
+                      onClick={() => setDrawColor(color)}
+                      style={{
+                        width: '24px',
+                        height: '24px',
+                        backgroundColor: color,
+                        border: drawColor === color ? '2px solid #10b981' : '1px solid #6b7280',
+                        borderRadius: '50%',
+                        cursor: 'pointer'
+                      }}
+                    />
+                  ))}
+                </div>
+                
+                {/* Undo/Redo */}
+                <div style={{
+                  display: 'flex',
+                  gap: '0.5rem',
+                  justifyContent: 'center'
+                }}>
+                  <button
+                    onClick={handleUndo}
+                    disabled={historyStep <= 0}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: historyStep <= 0 ? '#4b5563' : '#374151',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.5rem',
+                      cursor: historyStep <= 0 ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      opacity: historyStep <= 0 ? 0.5 : 1
+                    }}
+                  >
+                    <MdUndo size={20} />
+                    Undo
+                  </button>
+                  <button
+                    onClick={handleRedo}
+                    disabled={historyStep >= drawHistory.length - 1}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: historyStep >= drawHistory.length - 1 ? '#4b5563' : '#374151',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.5rem',
+                      cursor: historyStep >= drawHistory.length - 1 ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      opacity: historyStep >= drawHistory.length - 1 ? 0.5 : 1
+                    }}
+                  >
+                    <MdRedo size={20} />
+                    Redo
+                  </button>
+                </div>
+                
+                {/* Text Input */}
+                {textPosition && (
+                  <div style={{
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: '0.5rem',
+                    borderRadius: '0.5rem',
+                    display: 'flex',
+                    gap: '0.5rem'
+                  }}>
+                    <input
+                      type="text"
+                      value={textInput}
+                      onChange={(e) => setTextInput(e.target.value)}
+                      placeholder="Enter text..."
+                      autoFocus
+                      style={{
+                        flex: 1,
+                        padding: '0.5rem',
+                        borderRadius: '0.25rem',
+                        border: 'none',
+                        backgroundColor: '#374151',
+                        color: 'white'
+                      }}
+                    />
+                    <button
+                      onClick={handleTextSubmit}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        backgroundColor: '#10b981',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.25rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
