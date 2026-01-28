@@ -788,35 +788,49 @@ function CameraModal({
     stopCamera();
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      if (file.type.startsWith("image/")) {
-        const img = new Image();
-        img.onload = () => {
-          setImageToEdit(ev.target.result);
-          setImageDimensions({ width: img.width, height: img.height });
+ const handleFileChange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  // Reset the file input so the same file can be selected again
+  if (fileInputRef.current) {
+    fileInputRef.current.value = '';
+  }
+  
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    if (file.type.startsWith("image/")) {
+      const img = new Image();
+      img.onload = () => {
+        const imageDataUrl = ev.target.result;
+        setImageToEdit(imageDataUrl);
+        setImageDimensions({ width: img.width, height: img.height });
+        
+        // IMPORTANT: Set a timeout to ensure state updates before showing crop mode
+        setTimeout(() => {
           setIsCropping(true);
+          setUseNativeCamera(false); // Hide native camera UI
           setCameraError(null);
-        };
-        img.src = ev.target.result;
-      } else if (file.type.startsWith("video/")) {
-        setPreview(ev.target.result);
-        setCameraError(null);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const openNativeCamera = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
+          stopCamera(); // Stop any active camera stream
+        }, 100);
+      };
+      img.src = ev.target.result;
+    } else if (file.type.startsWith("video/")) {
+      setPreview(ev.target.result);
+      setUseNativeCamera(false); // Hide native camera UI
+      setCameraError(null);
     }
   };
-
+  reader.readAsDataURL(file);
+};
+  const openNativeCamera = () => {
+  if (fileInputRef.current) {
+    // Clear the file input first
+    fileInputRef.current.value = '';
+    // Trigger click to open camera
+    fileInputRef.current.click();
+  }
+};
   // Touch event handlers for mobile
   const handleTouchStart = (e) => {
     if (editorMode !== 'draw') return;
@@ -1642,40 +1656,43 @@ function CameraModal({
     );
   };
 
-  const resetStates = () => {
-    setPreview(null);
-    setImageToEdit(null);
-    setIsCropping(false);
-    setIsRecording(false);
-    setRecordedVideo(null);
-    setElements([]);
-    setDrawHistory([]);
-    setHistoryStep(-1);
-    setRotation(0);
-    setBrightness(100);
-    setEditorMode('crop');
-    setDrawColor('#ff0000');
-    setDrawTool('pen');
-    setTextInput('');
-    setTextPosition(null);
-    setSelectedElement(null);
-    setShowDeleteZone(false);
-    setIsOverDeleteZone(false);
-    setCameraError(null);
-    setUseNativeCamera(false);
-  };
-
+ const resetStates = () => {
+  setPreview(null);
+  setImageToEdit(null);
+  setIsCropping(false);
+  setIsRecording(false);
+  setRecordedVideo(null);
+  setElements([]);
+  setDrawHistory([]);
+  setHistoryStep(-1);
+  setRotation(0);
+  setBrightness(100);
+  setEditorMode('crop');
+  setDrawColor('#ff0000');
+  setDrawTool('pen');
+  setTextInput('');
+  setTextPosition(null);
+  setSelectedElement(null);
+  setShowDeleteZone(false);
+  setIsOverDeleteZone(false);
+  setCameraError(null);
+  setUseNativeCamera(false);
+  // Clear file input
+  if (fileInputRef.current) {
+    fileInputRef.current.value = '';
+  }
+};
   // Add hidden file input for native camera
-  const renderNativeCameraInput = () => (
-    <input
-      ref={fileInputRef}
-      type="file"
-      accept={mode === "photo" ? "image/*" : "video/*"}
-      capture={mode === "photo" ? (cameraType === "environment" ? "environment" : "user") : (cameraType === "environment" ? "environment" : "user")}
-      onChange={handleFileChange}
-      style={{ display: 'none' }}
-    />
-  );
+ const renderNativeCameraInput = () => (
+  <input
+    ref={fileInputRef}
+    type="file"
+    accept={mode === "photo" ? "image/*" : "video/*"}
+    capture={mode === "photo" ? (cameraType === "environment" ? "environment" : "user") : (cameraType === "environment" ? "environment" : "user")}
+    onChange={handleFileChange}
+    style={{ display: 'none' }}
+  />
+);
 
   if (!isOpen) return null;
 
@@ -2000,101 +2017,134 @@ function CameraModal({
             </div>
           ) : useNativeCamera ? (
             <div style={{
-              position: "relative",
-              borderRadius: "8px",
-              overflow: "hidden",
-              backgroundColor: "#000",
-              marginBottom: "1rem",
-              minHeight: "300px",
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '2rem'
-            }}>
-              <div style={{
-                color: 'white',
-                textAlign: 'center',
-                marginBottom: '2rem'
-              }}>
-                <MdCamera size={48} style={{ marginBottom: '1rem' }} />
-                <h3 style={{ marginBottom: '0.5rem' }}>Native Camera Access</h3>
-                <p style={{ marginBottom: '1rem', fontSize: '0.9rem' }}>
-                  Using device's native camera for better compatibility
-                </p>
-                <p style={{ fontSize: '0.8rem', color: '#9ca3af' }}>
-                  The camera will open in a separate window. After taking a photo/video, 
-                  it will be loaded here for editing.
-                </p>
-              </div>
-              
-              <div style={{
-                display: 'flex',
-                gap: '1rem',
-                justifyContent: 'center'
-              }}>
-                <button
-                  onClick={() => {
-                    setCameraType("environment");
-                    openNativeCamera();
-                  }}
-                  style={{
-                    padding: '0.75rem 1.5rem',
-                    backgroundColor: '#374151',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '0.5rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem'
-                  }}
-                >
-                  <MdCamera size={20} />
-                  Rear Camera
-                </button>
-                
-                <button
-                  onClick={() => {
-                    setCameraType("user");
-                    openNativeCamera();
-                  }}
-                  style={{
-                    padding: '0.75rem 1.5rem',
-                    backgroundColor: '#374151',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '0.5rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem'
-                  }}
-                >
-                  <MdFlipCameraAndroid size={20} />
-                  Front Camera
-                </button>
-              </div>
-              
-              <button
-                onClick={() => {
-                  setUseNativeCamera(false);
-                  setCameraError(null);
-                  mode === "video" ? initializeVideoRecorder() : initializeCamera();
-                }}
-                style={{
-                  marginTop: '2rem',
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  cursor: 'pointer'
-                }}
-              >
-                Try Direct Camera Again
-              </button>
-            </div>
+    position: "relative",
+    borderRadius: "8px",
+    overflow: "hidden",
+    backgroundColor: "#000",
+    marginBottom: "1rem",
+    minHeight: "300px",
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '2rem'
+  }}>
+    <div style={{
+      color: 'white',
+      textAlign: 'center',
+      marginBottom: '2rem'
+    }}>
+      <MdCamera size={48} style={{ marginBottom: '1rem' }} />
+      <h3 style={{ marginBottom: '0.5rem' }}>Native Camera Access</h3>
+      <p style={{ marginBottom: '1rem', fontSize: '0.9rem' }}>
+        Using device's native camera for better compatibility
+      </p>
+      <p style={{ fontSize: '0.8rem', color: '#9ca3af' }}>
+        {mode === "photo" 
+          ? "The camera will open to take a photo. After taking a photo, it will be loaded here for editing."
+          : "The camera will open to record video. After recording, it will be loaded here for editing."}
+      </p>
+    </div>
+    
+    <div style={{
+      display: 'flex',
+      gap: '1rem',
+      justifyContent: 'center',
+      flexWrap: 'wrap'
+    }}>
+      <button
+        onClick={() => {
+          setCameraType("environment");
+          openNativeCamera();
+        }}
+        style={{
+          padding: '0.75rem 1.5rem',
+          backgroundColor: '#374151',
+          color: 'white',
+          border: 'none',
+          borderRadius: '0.5rem',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          minWidth: '140px'
+        }}
+      >
+        <MdCamera size={20} />
+        Rear Camera
+      </button>
+      
+      <button
+        onClick={() => {
+          setCameraType("user");
+          openNativeCamera();
+        }}
+        style={{
+          padding: '0.75rem 1.5rem',
+          backgroundColor: '#374151',
+          color: 'white',
+          border: 'none',
+          borderRadius: '0.5rem',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          minWidth: '140px'
+        }}
+      >
+        <MdFlipCameraAndroid size={20} />
+        Front Camera
+      </button>
+    </div>
+    
+    <div style={{
+      display: 'flex',
+      gap: '1rem',
+      justifyContent: 'center',
+      marginTop: '1rem',
+      width: '100%'
+    }}>
+      <button
+        onClick={() => {
+          setUseNativeCamera(false);
+          setCameraError(null);
+          mode === "video" ? initializeVideoRecorder() : initializeCamera();
+        }}
+        style={{
+          padding: '0.75rem 1.5rem',
+          backgroundColor: '#6b7280',
+          color: 'white',
+          border: 'none',
+          borderRadius: '0.5rem',
+          cursor: 'pointer',
+          flex: 1,
+          maxWidth: '200px'
+        }}
+      >
+        Back
+      </button>
+      
+      <button
+        onClick={() => {
+          setUseNativeCamera(false);
+          resetStates();
+          onClose();
+        }}
+        style={{
+          padding: '0.75rem 1.5rem',
+          backgroundColor: '#ef4444',
+          color: 'white',
+          border: 'none',
+          borderRadius: '0.5rem',
+          cursor: 'pointer',
+          flex: 1,
+          maxWidth: '200px'
+        }}
+      >
+        Cancel
+      </button>
+    </div>
+  </div>
           ) : (
             <div style={{
               position: "relative",
