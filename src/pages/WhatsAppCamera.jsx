@@ -25,6 +25,7 @@ import {
   MdCircle,
   MdSquare,
   MdDelete,
+  MdError,
 } from "react-icons/md";
 import { FaArrowRight } from "react-icons/fa";
 import { Link } from 'react-router-dom';
@@ -367,7 +368,7 @@ export default function WhatsAppCamera() {
   );
 }
 
-// CameraModal Component - Mobile/PWA Compatible
+// CameraModal Component - Mobile/PWA Compatible with Permission Handling
 function CameraModal({
   isOpen,
   onClose,
@@ -385,6 +386,8 @@ function CameraModal({
   const [preview, setPreview] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordedVideo, setRecordedVideo] = useState(null);
+  const [permissionStatus, setPermissionStatus] = useState('pending'); // 'pending', 'granted', 'denied'
+  const [permissionRequested, setPermissionRequested] = useState(false);
 
   // Editor states
   const [isCropping, setIsCropping] = useState(false);
@@ -414,6 +417,14 @@ function CameraModal({
   const [isOverDeleteZone, setIsOverDeleteZone] = useState(false);
   const [cameraError, setCameraError] = useState(null);
 
+  // Check if we're in PWA mode
+  const isPWA = () => {
+    return window.matchMedia('(display-mode: standalone)').matches || 
+           window.navigator.standalone === true ||
+           window.location.protocol === 'file:' ||
+           window.location.hostname === 'localhost';
+  };
+
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -427,16 +438,15 @@ function CameraModal({
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && mode === "photo") {
-      initializeCamera();
-    } else if (isOpen && mode === "video") {
-      initializeVideoRecorder();
+    if (isOpen && !permissionRequested) {
+      // Don't initialize camera immediately, wait for user action
+      setPermissionStatus('pending');
     }
     
     return () => {
       stopCamera();
     };
-  }, [isOpen, mode]);
+  }, [isOpen, permissionRequested]);
 
   useEffect(() => {
     if (isCropping && imageToEdit && imageDimensions.width) {
@@ -450,6 +460,85 @@ function CameraModal({
     }
   }, [isCropping, imageToEdit, imageDimensions]);
 
+  // Function to request camera permissions
+  const requestCameraPermission = async () => {
+    try {
+      setPermissionRequested(true);
+      setPermissionStatus('pending');
+      
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Camera API not supported in this browser');
+      }
+
+      // Check existing permissions if available
+      if (navigator.permissions && navigator.permissions.query) {
+        try {
+          const cameraPermission = await navigator.permissions.query({ name: 'camera' });
+          const microphonePermission = mode === "video" ? 
+            await navigator.permissions.query({ name: 'microphone' }) : 
+            { state: 'granted' };
+
+          if (cameraPermission.state === 'denied' || microphonePermission.state === 'denied') {
+            setPermissionStatus('denied');
+            setCameraError('Camera/microphone permission was denied. Please enable it in your browser settings.');
+            return false;
+          }
+        } catch (permError) {
+          console.log('Permission query not fully supported, continuing...');
+        }
+      }
+
+      // Try to get camera feed with minimal constraints first
+      const constraints = {
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: { ideal: "environment" }
+        },
+        audio: mode === "video" // Only request audio for video mode
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      setStream(stream);
+      
+      // Stop tracks immediately to show we got permission
+      stream.getTracks().forEach(track => track.stop());
+      
+      setPermissionStatus('granted');
+      setCameraError(null);
+      
+      // Now actually initialize camera with proper settings
+      if (mode === "photo") {
+        await initializeCamera();
+      } else {
+        await initializeVideoRecorder();
+      }
+      
+      return true;
+    } catch (err) {
+      console.error("Permission request error:", err);
+      
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setPermissionStatus('denied');
+        setCameraError('Camera/microphone access was denied. Please allow camera access in your browser settings.');
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setPermissionStatus('denied');
+        setCameraError('No camera found on this device.');
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setPermissionStatus('denied');
+        setCameraError('Camera is already in use by another application.');
+      } else if (err.name === 'OverconstrainedError' || err.name === 'ConstraintNotSatisfiedError') {
+        setPermissionStatus('denied');
+        setCameraError('Camera constraints could not be satisfied.');
+      } else {
+        setPermissionStatus('denied');
+        setCameraError('Cannot access camera. Please check permissions and try again.');
+      }
+      
+      return false;
+    }
+  };
+
   const initializeCamera = async () => {
     try {
       setCameraError(null);
@@ -457,19 +546,15 @@ function CameraModal({
       // Mobile-friendly camera constraints
       const constraints = {
         video: {
-          facingMode: { ideal: "environment" }, // Prefer rear camera
-          width: { ideal: 1920, max: 1920 }, // Limit resolution for mobile
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920, max: 1920 },
           height: { ideal: 1080, max: 1080 },
           frameRate: { ideal: 30 }
         },
         audio: false
       };
 
-      // Check if running in PWA/standalone mode
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
-                         window.navigator.standalone === true;
-      
-      // Add more flexible constraints for mobile
+      // Adjust for mobile devices
       if (isMobileDevice()) {
         constraints.video = {
           facingMode: { ideal: "environment" },
@@ -495,6 +580,8 @@ function CameraModal({
       } catch (deviceErr) {
         console.warn("Device enumeration error:", deviceErr);
       }
+      
+      return true;
     } catch (err) {
       console.error("Camera initialization error:", err);
       setCameraError(err.message || "Cannot access camera");
@@ -509,9 +596,11 @@ function CameraModal({
           videoRef.current.srcObject = fallbackStream;
         }
         setCameraError(null);
+        return true;
       } catch (fallbackErr) {
         console.error("Fallback camera error:", fallbackErr);
         setCameraError("Camera access denied. Please check permissions.");
+        return false;
       }
     }
   };
@@ -574,6 +663,7 @@ function CameraModal({
         setPreview(videoUrl);
       };
 
+      return true;
     } catch (err) {
       console.error("Video recorder initialization error:", err);
       setCameraError(err.message || "Cannot access camera/microphone");
@@ -589,9 +679,11 @@ function CameraModal({
           videoRef.current.srcObject = fallbackStream;
         }
         setCameraError("Audio not available, video only");
+        return true;
       } catch (fallbackErr) {
         console.error("Fallback video error:", fallbackErr);
         setCameraError("Camera access denied. Please check permissions.");
+        return false;
       }
     }
   };
@@ -1418,6 +1510,8 @@ function CameraModal({
     setShowDeleteZone(false);
     setIsOverDeleteZone(false);
     setCameraError(null);
+    setPermissionStatus('pending');
+    setPermissionRequested(false);
   };
 
   const renderCropOverlay = () => {
@@ -1597,6 +1691,189 @@ function CameraModal({
     );
   };
 
+  // Permission request UI
+  const renderPermissionRequest = () => (
+    <div style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '2rem',
+      zIndex: 100,
+      textAlign: 'center',
+      color: 'white'
+    }}>
+      <MdCamera size={64} style={{ marginBottom: '1.5rem' }} />
+      <h3 style={{ fontSize: '1.5rem', fontWeight: '600', marginBottom: '1rem' }}>
+        Camera Access Required
+      </h3>
+      <p style={{ 
+        fontSize: '1rem', 
+        marginBottom: '2rem',
+        maxWidth: '400px',
+        lineHeight: '1.5',
+        color: '#d1d5db'
+      }}>
+        {mode === "video" 
+          ? "This app needs access to your camera and microphone to record videos." 
+          : "This app needs access to your camera to take photos."}
+        <br /><br />
+        <span style={{ fontSize: '0.9rem', color: '#9ca3af' }}>
+          Click "Allow" when prompted by your browser.
+        </span>
+      </p>
+      
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <button
+          onClick={requestCameraPermission}
+          style={{
+            padding: '1rem 2rem',
+            backgroundColor: '#10b981',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.5rem',
+            fontSize: '1rem',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            minWidth: '180px'
+          }}
+          onMouseOver={(e) => e.target.style.backgroundColor = '#059669'}
+          onMouseOut={(e) => e.target.style.backgroundColor = '#10b981'}
+        >
+          Allow Camera Access
+        </button>
+        
+        <button
+          onClick={() => {
+            setPermissionRequested(true);
+            setPermissionStatus('denied');
+          }}
+          style={{
+            padding: '1rem 2rem',
+            backgroundColor: 'transparent',
+            color: '#9ca3af',
+            border: '1px solid #4b5563',
+            borderRadius: '0.5rem',
+            fontSize: '1rem',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            minWidth: '180px'
+          }}
+          onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
+          onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+        >
+          Use Files Instead
+        </button>
+      </div>
+    </div>
+  );
+
+  // Permission denied UI
+  const renderPermissionDenied = () => (
+    <div style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '2rem',
+      zIndex: 100,
+      textAlign: 'center',
+      color: 'white'
+    }}>
+      <MdError size={64} style={{ marginBottom: '1.5rem', color: '#ef4444' }} />
+      <h3 style={{ fontSize: '1.5rem', fontWeight: '600', marginBottom: '1rem' }}>
+        Camera Access Denied
+      </h3>
+      <p style={{ 
+        fontSize: '1rem', 
+        marginBottom: '2rem',
+        maxWidth: '400px',
+        lineHeight: '1.5',
+        color: '#d1d5db'
+      }}>
+        {cameraError || "Camera access is required to use this feature."}
+        <br /><br />
+        <span style={{ fontSize: '0.9rem', color: '#9ca3af' }}>
+          To enable camera access:
+        </span>
+        <ol style={{ 
+          textAlign: 'left', 
+          margin: '1rem 0',
+          paddingLeft: '1.5rem',
+          fontSize: '0.9rem'
+        }}>
+          <li>Click the camera icon in your browser's address bar</li>
+          <li>Select "Always allow camera and microphone"</li>
+          <li>Refresh the page and try again</li>
+        </ol>
+      </p>
+      
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <button
+          onClick={async () => {
+            setPermissionRequested(false);
+            setPermissionStatus('pending');
+            setCameraError(null);
+            await requestCameraPermission();
+          }}
+          style={{
+            padding: '1rem 2rem',
+            backgroundColor: '#3b82f6',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.5rem',
+            fontSize: '1rem',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            minWidth: '180px'
+          }}
+          onMouseOver={(e) => e.target.style.backgroundColor = '#2563eb'}
+          onMouseOut={(e) => e.target.style.backgroundColor = '#3b82f6'}
+        >
+          Try Again
+        </button>
+        
+        <button
+          onClick={() => {
+            setPermissionRequested(true);
+            // Continue without camera
+          }}
+          style={{
+            padding: '1rem 2rem',
+            backgroundColor: 'transparent',
+            color: '#9ca3af',
+            border: '1px solid #4b5563',
+            borderRadius: '0.5rem',
+            fontSize: '1rem',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            minWidth: '180px'
+          }}
+          onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
+          onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+        >
+          Use Files Instead
+        </button>
+      </div>
+    </div>
+  );
+
   if (!isOpen) return null;
 
   return (
@@ -1612,7 +1889,7 @@ function CameraModal({
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 20000,
-        touchAction: 'none' // Important for mobile touch handling
+        touchAction: 'none'
       }}
       onClick={() => {
         if (!isCropping && !textPosition) {
@@ -1631,7 +1908,7 @@ function CameraModal({
           width: '95vw',
           maxWidth: '800px',
           zIndex: 20001,
-          WebkitOverflowScrolling: 'touch' // Smooth scrolling on iOS
+          WebkitOverflowScrolling: 'touch'
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1681,14 +1958,14 @@ function CameraModal({
               fontSize: "1.25rem",
               color: "#9ca3af",
               cursor: "pointer",
-              width: "40px", // Larger for mobile
+              width: "40px",
               height: "40px",
               borderRadius: "50%",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               transition: "all 0.2s ease",
-              touchAction: 'manipulation' // Better touch handling
+              touchAction: 'manipulation'
             }}
             onMouseOver={(e) => e.target.style.backgroundColor = "#4b5563"}
             onMouseOut={(e) => e.target.style.backgroundColor = "#374151"}
@@ -1716,7 +1993,7 @@ function CameraModal({
                 overflow: "hidden",
                 backgroundColor: "#000",
                 marginBottom: "1rem",
-                touchAction: 'none' // Important for drawing
+                touchAction: 'none'
               }}
               onMouseDown={editorMode === 'draw' ? handleInteractionStart : undefined}
               onMouseMove={editorMode === 'draw' ? handleInteractionMove : undefined}
@@ -1749,7 +2026,7 @@ function CameraModal({
                   top: 0,
                   left: 0,
                   right: 0,
-                  height: '60px', // Taller for mobile
+                  height: '60px',
                   backgroundColor: isOverDeleteZone ? 'rgba(239, 68, 68, 0.8)' : 'rgba(239, 68, 68, 0.4)',
                   display: 'flex',
                   alignItems: 'center',
@@ -1764,9 +2041,9 @@ function CameraModal({
                     gap: '0.5rem',
                     color: 'white',
                     fontWeight: '600',
-                    fontSize: '0.9rem' // Smaller text for mobile
+                    fontSize: '0.9rem'
                   }}>
-                    <MdDelete size={28} /> {/* Larger icon */}
+                    <MdDelete size={28} />
                     <span>Drag here to delete</span>
                   </div>
                 </div>
@@ -1804,11 +2081,11 @@ function CameraModal({
                   flexDirection: 'column',
                   gap: '0.5rem',
                   minWidth: '300px',
-                  width: '80%', // Responsive width
+                  width: '80%',
                   maxWidth: '400px',
                   zIndex: 100,
                   backdropFilter: 'blur(4px)',
-                  WebkitBackdropFilter: 'blur(4px)' // Safari support
+                  WebkitBackdropFilter: 'blur(4px)'
                 }}>
                   <span style={{ 
                     color: 'white', 
@@ -1831,8 +2108,8 @@ function CameraModal({
                       backgroundColor: 'rgba(255, 255, 255, 0.1)',
                       color: 'white',
                       fontSize: '1rem',
-                      WebkitAppearance: 'none', // Remove iOS styling
-                      MozAppearance: 'textfield' // Remove Firefox styling
+                      WebkitAppearance: 'none',
+                      MozAppearance: 'textfield'
                     }}
                     onKeyPress={handleKeyPress}
                   />
@@ -1848,7 +2125,7 @@ function CameraModal({
                         setTextInput('');
                       }}
                       style={{
-                        padding: '0.75rem 1.5rem', // Larger for mobile
+                        padding: '0.75rem 1.5rem',
                         backgroundColor: 'rgba(107, 114, 128, 0.5)',
                         color: 'white',
                         border: 'none',
@@ -1925,8 +2202,14 @@ function CameraModal({
               marginBottom: "1rem",
               minHeight: "300px"
             }}>
+              {/* Permission Request UI */}
+              {!permissionRequested && permissionStatus === 'pending' && renderPermissionRequest()}
+              
+              {/* Permission Denied UI */}
+              {permissionRequested && permissionStatus === 'denied' && renderPermissionDenied()}
+              
               {/* Camera Error Message */}
-              {cameraError && (
+              {cameraError && permissionStatus !== 'denied' && (
                 <div style={{
                   position: 'absolute',
                   top: 0,
@@ -1965,136 +2248,141 @@ function CameraModal({
                 </div>
               )}
               
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted={mode === "video"}
-                style={{
-                  width: "100%",
-                  height: "auto",
-                  maxHeight: "50vh",
-                  objectFit: "contain",
-                  display: "block",
-                  transform: mode === "photo" ? "scaleX(-1)" : "none" // Mirror for selfie
-                }}
-              />
-              
-              {mode === "photo" && devices.length > 1 && (
-                <button
-                  onClick={switchCamera}
-                  style={{
-                    position: "absolute",
-                    top: "12px",
-                    right: "12px",
-                    background: "rgba(0, 0, 0, 0.6)",
-                    color: "white",
-                    border: "none",
-                    width: "48px", // Larger for mobile
-                    height: "48px",
-                    borderRadius: "50%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                    transition: "all 0.2s ease",
-                    touchAction: 'manipulation'
-                  }}
-                  title="Switch Camera"
-                >
-                  <MdFlipCameraAndroid size={24} />
-                </button>
-              )}
-              
-              {mode === "photo" && !isCropping && (
-                <div style={{
-                  position: "absolute",
-                  bottom: "20px",
-                  left: 0,
-                  right: 0,
-                  display: "flex",
-                  justifyContent: "center"
-                }}>
-                  <button
-                    onClick={captureImage}
+              {/* Camera Feed - only show if permission granted */}
+              {permissionStatus === 'granted' && stream && (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted={mode === "video"}
                     style={{
-                      background: "white",
-                      color: "#1f2937",
-                      border: "4px solid #d1d5db",
-                      width: "72px", // Larger for mobile
-                      height: "72px",
-                      borderRadius: "50%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      cursor: "pointer",
-                      boxShadow: "0 4px 6px rgba(0, 0, 0, 0.2)",
-                      transition: "all 0.2s ease",
-                      touchAction: 'manipulation'
+                      width: "100%",
+                      height: "auto",
+                      maxHeight: "50vh",
+                      objectFit: "contain",
+                      display: "block",
+                      transform: mode === "photo" ? "scaleX(-1)" : "none"
                     }}
-                  >
-                    <MdCamera size={32} />
-                  </button>
-                </div>
-              )}
-              
-              {mode === "video" && (
-                <div style={{
-                  position: "absolute",
-                  bottom: "20px",
-                  left: 0,
-                  right: 0,
-                  display: "flex",
-                  justifyContent: "center"
-                }}>
-                  <div style={{ display: "flex", gap: "0.5rem" }}>
-                    {!isRecording ? (
+                  />
+                  
+                  {mode === "photo" && devices.length > 1 && (
+                    <button
+                      onClick={switchCamera}
+                      style={{
+                        position: "absolute",
+                        top: "12px",
+                        right: "12px",
+                        background: "rgba(0, 0, 0, 0.6)",
+                        color: "white",
+                        border: "none",
+                        width: "48px",
+                        height: "48px",
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                        touchAction: 'manipulation'
+                      }}
+                      title="Switch Camera"
+                    >
+                      <MdFlipCameraAndroid size={24} />
+                    </button>
+                  )}
+                  
+                  {mode === "photo" && !isCropping && (
+                    <div style={{
+                      position: "absolute",
+                      bottom: "20px",
+                      left: 0,
+                      right: 0,
+                      display: "flex",
+                      justifyContent: "center"
+                    }}>
                       <button
-                        onClick={startRecording}
+                        onClick={captureImage}
                         style={{
-                          background: "#dc2626",
-                          color: "white",
-                          padding: "0.75rem 1.5rem", // Larger for mobile
-                          borderRadius: "9999px",
-                          fontWeight: "600",
-                          fontSize: "0.9rem",
-                          border: "none",
-                          cursor: "pointer",
+                          background: "white",
+                          color: "#1f2937",
+                          border: "4px solid #d1d5db",
+                          width: "72px",
+                          height: "72px",
+                          borderRadius: "50%",
                           display: "flex",
                           alignItems: "center",
-                          gap: "0.5rem",
-                          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)",
-                          touchAction: 'manipulation'
-                        }}
-                      >
-                        <MdPlayArrow size={20} />
-                        <span>Start Recording</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={stopRecording}
-                        style={{
-                          background: "#dc2626",
-                          color: "white",
-                          padding: "0.75rem 1.5rem",
-                          borderRadius: "9999px",
-                          fontWeight: "600",
-                          fontSize: "0.9rem",
-                          border: "none",
+                          justifyContent: "center",
                           cursor: "pointer",
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: "0.5rem",
-                          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)",
+                          boxShadow: "0 4px 6px rgba(0, 0, 0, 0.2)",
+                          transition: "all 0.2s ease",
                           touchAction: 'manipulation'
                         }}
                       >
-                        <MdStop size={20} />
-                        <span>Stop Recording</span>
+                        <MdCamera size={32} />
                       </button>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  )}
+                  
+                  {mode === "video" && (
+                    <div style={{
+                      position: "absolute",
+                      bottom: "20px",
+                      left: 0,
+                      right: 0,
+                      display: "flex",
+                      justifyContent: "center"
+                    }}>
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        {!isRecording ? (
+                          <button
+                            onClick={startRecording}
+                            style={{
+                              background: "#dc2626",
+                              color: "white",
+                              padding: "0.75rem 1.5rem",
+                              borderRadius: "9999px",
+                              fontWeight: "600",
+                              fontSize: "0.9rem",
+                              border: "none",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                              boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)",
+                              touchAction: 'manipulation'
+                            }}
+                          >
+                            <MdPlayArrow size={20} />
+                            <span>Start Recording</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={stopRecording}
+                            style={{
+                              background: "#dc2626",
+                              color: "white",
+                              padding: "0.75rem 1.5rem",
+                              borderRadius: "9999px",
+                              fontWeight: "600",
+                              fontSize: "0.9rem",
+                              border: "none",
+                              cursor: "pointer",
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: "0.5rem",
+                              boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)",
+                              touchAction: 'manipulation'
+                            }}
+                          >
+                            <MdStop size={20} />
+                            <span>Stop Recording</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -2115,12 +2403,12 @@ function CameraModal({
               justifyContent: 'center',
               gap: '0.5rem',
               marginBottom: '1rem',
-              flexWrap: 'wrap' // Wrap on small screens
+              flexWrap: 'wrap'
             }}>
               <button
                 onClick={() => setEditorMode('crop')}
                 style={{
-                  padding: '0.75rem 1rem', // Larger for mobile
+                  padding: '0.75rem 1rem',
                   backgroundColor: editorMode === 'crop' ? '#10b981' : '#374151',
                   color: 'white',
                   border: 'none',
@@ -2131,7 +2419,7 @@ function CameraModal({
                   alignItems: 'center',
                   gap: '0.5rem',
                   transition: 'all 0.2s ease',
-                  minWidth: '100px', // Minimum width for touch
+                  minWidth: '100px',
                   touchAction: 'manipulation'
                 }}
               >
@@ -2210,7 +2498,7 @@ function CameraModal({
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.25rem',
-                      minWidth: '60px', // Minimum for touch
+                      minWidth: '60px',
                       touchAction: 'manipulation'
                     }}
                   >
@@ -2305,7 +2593,7 @@ function CameraModal({
                       key={color}
                       onClick={() => setDrawColor(color)}
                       style={{
-                        width: '32px', // Larger for mobile
+                        width: '32px',
                         height: '32px',
                         backgroundColor: color,
                         border: drawColor === color ? '3px solid #10b981' : '2px solid #6b7280',
@@ -2342,7 +2630,7 @@ function CameraModal({
                     onClick={handleUndo}
                     disabled={historyStep <= 0}
                     style={{
-                      padding: '0.75rem 1.5rem', // Larger for mobile
+                      padding: '0.75rem 1.5rem',
                       backgroundColor: historyStep <= 0 ? '#4b5563' : '#374151',
                       color: 'white',
                       border: 'none',
@@ -2410,7 +2698,7 @@ function CameraModal({
                     onChange={(e) => setBrightness(parseInt(e.target.value))}
                     style={{ 
                       width: '100%',
-                      height: '30px', // Taller for mobile
+                      height: '30px',
                       WebkitAppearance: 'none',
                       appearance: 'none',
                       background: 'transparent'
@@ -2431,7 +2719,7 @@ function CameraModal({
               <button
                 onClick={() => handleRotate(-90)}
                 style={{
-                  padding: '0.75rem 1.5rem', // Larger for mobile
+                  padding: '0.75rem 1.5rem',
                   backgroundColor: '#374151',
                   color: 'white',
                   border: 'none',
@@ -2473,13 +2761,13 @@ function CameraModal({
             <div style={{
               display: 'flex',
               gap: '0.75rem',
-              flexDirection: isMobileDevice() ? 'column' : 'row' // Stack on mobile
+              flexDirection: isMobileDevice() ? 'column' : 'row'
             }}>
               <button
                 onClick={handleSaveImage}
                 style={{
                   flex: 1,
-                  padding: '1rem', // Larger for mobile
+                  padding: '1rem',
                   background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                   color: 'white',
                   border: 'none',
@@ -2533,7 +2821,7 @@ function CameraModal({
                 <label style={{
                   background: '#374151',
                   color: 'white',
-                  padding: '1rem', // Larger for mobile
+                  padding: '1rem',
                   borderRadius: '8px',
                   fontWeight: '600',
                   fontSize: '0.9rem',
