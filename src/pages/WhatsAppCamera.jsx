@@ -509,6 +509,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
   useEffect(() => {
     if (isCropping && imageToEdit && imageDimensions.width) {
+      // Initialize crop rectangle to cover the whole image
       setCropRect({
         x: 0,
         y: 0,
@@ -550,12 +551,61 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     setDisplayOffset({ x: offsetX, y: offsetY });
     
     // Initialize drawing canvas with correct dimensions
-    if (drawingCanvasRef.current) {
+    if (drawingCanvasRef.current && imageDimensions.width && imageDimensions.height) {
       drawingCanvasRef.current.width = imageDimensions.width;
       drawingCanvasRef.current.height = imageDimensions.height;
+      // Redraw elements when canvas is resized
+      renderDrawing();
     }
     
   }, [imageDimensions, containerRef.current]);
+
+  // FIX: Initialize drawing canvas when image loads and preserve drawings when switching modes
+  useEffect(() => {
+    if (imageToEdit && drawingCanvasRef.current) {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = drawingCanvasRef.current;
+        if (!canvas) return;
+        
+        // Only reset canvas dimensions if they don't match
+        if (canvas.width !== img.width || canvas.height !== img.height) {
+          canvas.width = img.width;
+          canvas.height = img.height;
+        }
+        
+        // Always render drawings when image loads
+        renderDrawing();
+      };
+      img.src = imageToEdit;
+    }
+  }, [imageToEdit]);
+
+  // FIX: Preserve drawings when switching editor modes
+  useEffect(() => {
+    // When switching to draw mode, ensure canvas is properly initialized
+    if (editorMode === "draw" && imageToEdit && drawingCanvasRef.current) {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = drawingCanvasRef.current;
+        if (!canvas) return;
+        
+        // Set canvas dimensions to match image
+        if (canvas.width !== img.width || canvas.height !== img.height) {
+          canvas.width = img.width;
+          canvas.height = img.height;
+        }
+        
+        // Clear and redraw
+        renderDrawing();
+      };
+      img.src = imageToEdit;
+    } else if (editorMode !== "draw") {
+      // When switching away from draw mode, ensure drawings are preserved
+      // Just render to keep them visible
+      renderDrawing();
+    }
+  }, [editorMode, imageToEdit]);
 
   const initializeCamera = async () => {
     try {
@@ -842,7 +892,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         const img = new Image();
         img.onload = () => {
           const imageDataUrl = ev.target.result;
-          console.log("Android native image loaded:", img.width, "x", img.height);
           setImageToEdit(imageDataUrl);
           setPreview(imageDataUrl);
           setImageDimensions({ width: img.width, height: img.height });
@@ -889,7 +938,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     }
   };
 
-  // FIXED: Correct coordinate calculation
+  // FIXED: Correct coordinate calculation for drawing
   const getCanvasCoordinates = (event) => {
     if (!containerRef.current || !imageDimensions.width) return { x: 0, y: 0 };
 
@@ -1340,25 +1389,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     }
   };
 
+  // FIX: Render drawings whenever elements change or editor mode changes
   useEffect(() => {
     renderDrawing();
-  }, [elements, tempElement, selectedElement, imageDimensions]);
-
-  useEffect(() => {
-    if (imageToEdit && editorMode === "draw" && drawingCanvasRef.current) {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = drawingCanvasRef.current;
-        canvas.width = img.width;
-        canvas.height = img.height;
-        // Clear any existing drawings when switching to draw mode
-        const ctx = canvas.getContext("2d");
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        renderDrawing();
-      };
-      img.src = imageToEdit;
-    }
-  }, [imageToEdit, editorMode]);
+  }, [elements, tempElement, selectedElement, imageDimensions, editorMode]);
 
   const handleSaveImage = async () => {
     if (!imageToEdit && !preview) return;
@@ -1441,21 +1475,17 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     setRotation((prev) => (prev + degrees) % 360);
   };
 
+  // FIXED: Correct crop overlay rendering with proper coordinate conversion
   const renderCropOverlay = () => {
-    if (!containerRef.current || !imageDimensions.width) return null;
+    if (!containerRef.current || !imageDimensions.width || !isCropping) return null;
 
     const rect = containerRef.current.getBoundingClientRect();
-    const scaleX = imageDimensions.width / rect.width;
-    const scaleY = imageDimensions.height / rect.height;
-    const scale = Math.min(scaleX, scaleY);
-
-    const offsetX = (rect.width - imageDimensions.width / scale) / 2;
-    const offsetY = (rect.height - imageDimensions.height / scale) / 2;
-
-    const screenX = cropRect.x * scale + offsetX;
-    const screenY = cropRect.y * scale + offsetY;
-    const screenWidth = cropRect.width * scale;
-    const screenHeight = cropRect.height * scale;
+    
+    // Calculate crop rectangle position on screen using display scale and offset
+    const screenX = cropRect.x * displayScale + displayOffset.x;
+    const screenY = cropRect.y * displayScale + displayOffset.y;
+    const screenWidth = cropRect.width * displayScale;
+    const screenHeight = cropRect.height * displayScale;
 
     return (
       <div
@@ -1466,6 +1496,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           right: 0,
           bottom: 0,
           cursor: "move",
+          zIndex: 10,
         }}
         onMouseDown={(e) => {
           const startX = e.clientX || (e.touches && e.touches[0].clientX);
@@ -1479,8 +1510,8 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             const moveY =
               moveEvent.clientY ||
               (moveEvent.touches && moveEvent.touches[0].clientY);
-            const deltaX = (moveX - startX) / scale;
-            const deltaY = (moveY - startY) / scale;
+            const deltaX = (moveX - startX) / displayScale;
+            const deltaY = (moveY - startY) / displayScale;
 
             setCropRect({
               x: Math.max(
@@ -1517,6 +1548,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           document.addEventListener("touchend", handleMouseUp);
         }}
       >
+        {/* Dark overlay outside crop area */}
         <div
           style={{
             position: "absolute",
@@ -1528,6 +1560,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           }}
         />
 
+        {/* Crop rectangle */}
         <div
           style={{
             position: "absolute",
@@ -1536,115 +1569,117 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             width: `${screenWidth}px`,
             height: `${screenHeight}px`,
             border: "2px solid white",
-            boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.5)",
             boxSizing: "border-box",
+            pointerEvents: "none",
           }}
-        >
-          {["nw", "ne", "sw", "se"].map((corner) => {
-            const style = {
-              position: "absolute",
-              width: "30px",
-              height: "30px",
-              backgroundColor: "white",
-              border: "2px solid #10b981",
-              borderRadius: "4px",
-            };
+        />
 
-            if (corner === "nw") {
-              style.top = "-15px";
-              style.left = "-15px";
-              style.cursor = "nw-resize";
-            } else if (corner === "ne") {
-              style.top = "-15px";
-              style.right = "-15px";
-              style.cursor = "ne-resize";
-            } else if (corner === "sw") {
-              style.bottom = "-15px";
-              style.left = "-15px";
-              style.cursor = "sw-resize";
-            } else if (corner === "se") {
-              style.bottom = "-15px";
-              style.right = "-15px";
-              style.cursor = "se-resize";
-            }
+        {/* Crop corners */}
+        {["nw", "ne", "sw", "se"].map((corner) => {
+          const style = {
+            position: "absolute",
+            width: "30px",
+            height: "30px",
+            backgroundColor: "white",
+            border: "2px solid #10b981",
+            borderRadius: "4px",
+            pointerEvents: "auto",
+          };
 
-            return (
-              <div
-                key={corner}
-                style={style}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  const startX =
-                    e.clientX || (e.touches && e.touches[0].clientX);
-                  const startY =
-                    e.clientY || (e.touches && e.touches[0].clientY);
-                  const startCrop = { ...cropRect };
+          if (corner === "nw") {
+            style.top = `${screenY - 15}px`;
+            style.left = `${screenX - 15}px`;
+            style.cursor = "nw-resize";
+          } else if (corner === "ne") {
+            style.top = `${screenY - 15}px`;
+            style.left = `${screenX + screenWidth - 15}px`;
+            style.cursor = "ne-resize";
+          } else if (corner === "sw") {
+            style.top = `${screenY + screenHeight - 15}px`;
+            style.left = `${screenX - 15}px`;
+            style.cursor = "sw-resize";
+          } else if (corner === "se") {
+            style.top = `${screenY + screenHeight - 15}px`;
+            style.left = `${screenX + screenWidth - 15}px`;
+            style.cursor = "se-resize";
+          }
 
-                  const handleMouseMove = (moveEvent) => {
-                    const moveX =
-                      moveEvent.clientX ||
-                      (moveEvent.touches && moveEvent.touches[0].clientX);
-                    const moveY =
-                      moveEvent.clientY ||
-                      (moveEvent.touches && moveEvent.touches[0].clientY);
-                    const deltaX = (moveX - startX) / scale;
-                    const deltaY = (moveY - startY) / scale;
+          return (
+            <div
+              key={corner}
+              style={style}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                const startX =
+                  e.clientX || (e.touches && e.touches[0].clientX);
+                const startY =
+                  e.clientY || (e.touches && e.touches[0].clientY);
+                const startCrop = { ...cropRect };
 
-                    let newWidth = startCrop.width;
-                    let newHeight = startCrop.height;
-                    let newX = startCrop.x;
-                    let newY = startCrop.y;
+                const handleMouseMove = (moveEvent) => {
+                  const moveX =
+                    moveEvent.clientX ||
+                    (moveEvent.touches && moveEvent.touches[0].clientX);
+                  const moveY =
+                    moveEvent.clientY ||
+                    (moveEvent.touches && moveEvent.touches[0].clientY);
+                  const deltaX = (moveX - startX) / displayScale;
+                  const deltaY = (moveY - startY) / displayScale;
 
-                    if (corner === "nw") {
-                      newWidth = Math.max(100, startCrop.width - deltaX);
-                      newHeight = Math.max(100, startCrop.height - deltaY);
-                      newX = startCrop.x + deltaX;
-                      newY = startCrop.y + deltaY;
-                    } else if (corner === "ne") {
-                      newWidth = Math.max(100, startCrop.width + deltaX);
-                      newHeight = Math.max(100, startCrop.height - deltaY);
-                      newY = startCrop.y + deltaY;
-                    } else if (corner === "sw") {
-                      newWidth = Math.max(100, startCrop.width - deltaX);
-                      newHeight = Math.max(100, startCrop.height + deltaY);
-                      newX = startCrop.x + deltaX;
-                    } else if (corner === "se") {
-                      newWidth = Math.max(100, startCrop.width + deltaX);
-                      newHeight = Math.max(100, startCrop.height + deltaY);
-                    }
+                  let newWidth = startCrop.width;
+                  let newHeight = startCrop.height;
+                  let newX = startCrop.x;
+                  let newY = startCrop.y;
 
-                    setCropRect({
-                      x: Math.max(
-                        0,
-                        Math.min(imageDimensions.width - newWidth, newX),
-                      ),
-                      y: Math.max(
-                        0,
-                        Math.min(imageDimensions.height - newHeight, newY),
-                      ),
-                      width: newWidth,
-                      height: newHeight,
-                    });
-                  };
+                  if (corner === "nw") {
+                    newWidth = Math.max(100, startCrop.width - deltaX);
+                    newHeight = Math.max(100, startCrop.height - deltaY);
+                    newX = startCrop.x + deltaX;
+                    newY = startCrop.y + deltaY;
+                  } else if (corner === "ne") {
+                    newWidth = Math.max(100, startCrop.width + deltaX);
+                    newHeight = Math.max(100, startCrop.height - deltaY);
+                    newY = startCrop.y + deltaY;
+                  } else if (corner === "sw") {
+                    newWidth = Math.max(100, startCrop.width - deltaX);
+                    newHeight = Math.max(100, startCrop.height + deltaY);
+                    newX = startCrop.x + deltaX;
+                  } else if (corner === "se") {
+                    newWidth = Math.max(100, startCrop.width + deltaX);
+                    newHeight = Math.max(100, startCrop.height + deltaY);
+                  }
 
-                  const handleMouseUp = () => {
-                    document.removeEventListener("mousemove", handleMouseMove);
-                    document.removeEventListener("touchmove", handleMouseMove);
-                    document.removeEventListener("mouseup", handleMouseUp);
-                    document.removeEventListener("touchend", handleMouseUp);
-                  };
-
-                  document.addEventListener("mousemove", handleMouseMove);
-                  document.addEventListener("touchmove", handleMouseMove, {
-                    passive: false,
+                  setCropRect({
+                    x: Math.max(
+                      0,
+                      Math.min(imageDimensions.width - newWidth, newX),
+                    ),
+                    y: Math.max(
+                      0,
+                      Math.min(imageDimensions.height - newHeight, newY),
+                    ),
+                    width: newWidth,
+                    height: newHeight,
                   });
-                  document.addEventListener("mouseup", handleMouseUp);
-                  document.addEventListener("touchend", handleMouseUp);
-                }}
-              />
-            );
-          })}
-        </div>
+                };
+
+                const handleMouseUp = () => {
+                  document.removeEventListener("mousemove", handleMouseMove);
+                  document.removeEventListener("touchmove", handleMouseMove);
+                  document.removeEventListener("mouseup", handleMouseUp);
+                  document.removeEventListener("touchend", handleMouseUp);
+                };
+
+                document.addEventListener("mousemove", handleMouseMove);
+                document.addEventListener("touchmove", handleMouseMove, {
+                  passive: false,
+                });
+                document.addEventListener("mouseup", handleMouseUp);
+                document.addEventListener("touchend", handleMouseUp);
+              }}
+            />
+          );
+        })}
       </div>
     );
   };
