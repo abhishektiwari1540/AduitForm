@@ -465,7 +465,9 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const [isOverDeleteZone, setIsOverDeleteZone] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [useNativeCamera, setUseNativeCamera] = useState(false);
-  const [cameraType, setCameraType] = useState("environment"); // 'environment' for rear, 'user' for front
+  const [cameraType, setCameraType] = useState("environment");
+  const [isProcessingNativeImage, setIsProcessingNativeImage] = useState(false);
+  const [nativeImageLoaded, setNativeImageLoaded] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -505,20 +507,43 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     }
   }, [isCropping, imageToEdit, imageDimensions]);
 
+  // Fix for Android: Handle when native camera returns image
+  useEffect(() => {
+    if (preview && mode === "photo" && !isCropping && !nativeImageLoaded) {
+      console.log("Native image loaded, entering edit mode");
+      handleNativeImageLoaded();
+    }
+  }, [preview, mode, isCropping, nativeImageLoaded]);
+
+  const handleNativeImageLoaded = () => {
+    setIsProcessingNativeImage(true);
+    setNativeImageLoaded(true);
+    
+    const img = new Image();
+    img.onload = () => {
+      console.log("Image dimensions:", img.width, "x", img.height);
+      setImageDimensions({ width: img.width, height: img.height });
+      setIsCropping(true);
+      setEditorMode("crop");
+      setIsProcessingNativeImage(false);
+      setUseNativeCamera(false);
+      setCameraError(null);
+      stopCamera();
+    };
+    img.onerror = () => {
+      console.error("Failed to load native image");
+      setIsProcessingNativeImage(false);
+      setNativeImageLoaded(false);
+    };
+    img.src = preview;
+  };
+
   const initializeCamera = async () => {
     try {
       setCameraError(null);
       setUseNativeCamera(false);
-
-      // Check if we're in a PWA/standalone mode on mobile
-      const isStandalone =
-        window.matchMedia("(display-mode: standalone)").matches ||
-        window.navigator.standalone === true;
-
-      // For PWA on mobile, try native camera first if getUserMedia fails
-      if (isStandalone && isMobileDevice()) {
-        console.log("Running in PWA standalone mode");
-      }
+      setNativeImageLoaded(false);
+      setIsProcessingNativeImage(false);
 
       // Mobile-friendly camera constraints
       const constraints = {
@@ -573,19 +598,12 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     } catch (err) {
       console.error("Camera initialization error:", err);
 
-      // For PWA on mobile, fallback to native camera input
+      // For mobile, fallback to native camera input
       if (isMobileDevice()) {
         setCameraError(
           "Cannot access camera directly. Using native camera instead.",
         );
         setUseNativeCamera(true);
-
-        // Trigger native camera input after a short delay
-        setTimeout(() => {
-          if (fileInputRef.current) {
-            fileInputRef.current.click();
-          }
-        }, 500);
       } else {
         setCameraError(err.message || "Cannot access camera");
 
@@ -611,6 +629,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     try {
       setCameraError(null);
       setUseNativeCamera(false);
+      setNativeImageLoaded(false);
 
       // Mobile-friendly video constraints
       const constraints = {
@@ -681,19 +700,12 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     } catch (err) {
       console.error("Video recorder initialization error:", err);
 
-      // For PWA on mobile, fallback to native camera input
+      // For mobile, fallback to native camera input
       if (isMobileDevice()) {
         setCameraError(
           "Cannot access camera directly. Using native camera instead.",
         );
         setUseNativeCamera(true);
-
-        // Trigger native camera input after a short delay
-        setTimeout(() => {
-          if (fileInputRef.current) {
-            fileInputRef.current.click();
-          }
-        }, 500);
       } else {
         setCameraError(err.message || "Cannot access camera/microphone");
 
@@ -852,13 +864,16 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     const dataUrl = canvas.toDataURL("image/png", 0.9);
 
     setImageToEdit(dataUrl);
+    setPreview(dataUrl);
+    setNativeImageLoaded(true);
+    
     const img = new Image();
-    img.src = dataUrl;
     img.onload = () => {
       setImageDimensions({ width: img.width, height: img.height });
+      setIsCropping(true);
     };
+    img.src = dataUrl;
 
-    setIsCropping(true);
     stopCamera();
   };
 
@@ -877,44 +892,50 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         const img = new Image();
         img.onload = () => {
           const imageDataUrl = ev.target.result;
+          console.log("Native image selected, size:", img.width, "x", img.height);
           setImageToEdit(imageDataUrl);
+          setPreview(imageDataUrl);
           setImageDimensions({ width: img.width, height: img.height });
-          setPreview(imageDataUrl); // ADD THIS LINE - set preview
-
-          // IMPORTANT: Set a timeout to ensure state updates before showing crop mode
-          setTimeout(() => {
-            setIsCropping(true);
-            setUseNativeCamera(false); // Hide native camera UI
-            setCameraError(null);
-            stopCamera(); // Stop any active camera stream
-
-            // Also set editor mode to crop by default
-            setEditorMode("crop");
-          }, 100);
+          setIsCropping(true);
+          setUseNativeCamera(false);
+          setCameraError(null);
+          setNativeImageLoaded(true);
+          stopCamera();
+        };
+        img.onerror = () => {
+          console.error("Failed to load image");
+          setCameraError("Failed to load image. Please try again.");
         };
         img.src = ev.target.result;
       } else if (file.type.startsWith("video/")) {
         const videoUrl = ev.target.result;
         setPreview(videoUrl);
-        setUseNativeCamera(false); // Hide native camera UI
+        setUseNativeCamera(false);
         setCameraError(null);
-
-        // Set a small delay to ensure video is loaded
-        setTimeout(() => {
-          setIsCropping(false); // Videos don't go to crop mode
-        }, 100);
+        setNativeImageLoaded(false);
       }
+    };
+    reader.onerror = () => {
+      console.error("File reading error");
+      setCameraError("Failed to read file. Please try again.");
     };
     reader.readAsDataURL(file);
   };
+
   const openNativeCamera = () => {
     if (fileInputRef.current) {
       // Clear the file input first
       fileInputRef.current.value = "";
+      // Set attributes for Android compatibility
+      fileInputRef.current.setAttribute("capture", cameraType === "environment" ? "environment" : "user");
+      fileInputRef.current.setAttribute("accept", mode === "photo" ? "image/*" : "video/*");
       // Trigger click to open camera
-      fileInputRef.current.click();
+      setTimeout(() => {
+        fileInputRef.current.click();
+      }, 100);
     }
   };
+
   // Touch event handlers for mobile
   const handleTouchStart = (e) => {
     if (editorMode !== "draw") return;
@@ -1237,7 +1258,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         const p1 = element.points[i];
         const p2 = element.points[i + 1];
         const distance = pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y);
-        if (distance < 20) return true; // Larger tolerance for touch
+        if (distance < 20) return true;
       }
       return false;
     } else if (element.type === "text") {
@@ -1255,7 +1276,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       const distance = Math.sqrt(
         Math.pow(x - element.x, 2) + Math.pow(y - element.y, 2),
       );
-      return Math.abs(distance - radius) < 25; // Larger tolerance
+      return Math.abs(distance - radius) < 25;
     } else {
       const bounds = getElementBounds(element);
       return (
@@ -1307,7 +1328,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       text: textInput,
       x: textPosition.x,
       y: textPosition.y,
-      fontSize: 32, // Larger font for mobile
+      fontSize: 32,
     };
 
     setElements([...elements, newElement]);
@@ -1405,7 +1426,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const drawElement = (ctx, element, isSelected = false) => {
     ctx.strokeStyle = element.color;
     ctx.fillStyle = element.color;
-    ctx.lineWidth = element.type === "pen" ? element.width : 3; // Thicker lines for mobile
+    ctx.lineWidth = element.type === "pen" ? element.width : 3;
 
     if (element.type === "pen") {
       ctx.beginPath();
@@ -1420,7 +1441,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       const toX = element.x + element.width;
       const toY = element.y + element.height;
 
-      const headLength = 25; // Larger arrow head for mobile
+      const headLength = 25;
       const angle = Math.atan2(toY - fromY, toX - fromX);
 
       ctx.beginPath();
@@ -1460,7 +1481,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
       ctx.strokeStyle = "#10b981";
       ctx.setLineDash([5, 5]);
-      ctx.lineWidth = 3; // Thicker selection border
+      ctx.lineWidth = 3;
       ctx.strokeRect(
         bounds.x - 10,
         bounds.y - 10,
@@ -1510,93 +1531,81 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     }
   }, [imageToEdit, editorMode]);
 
- const handleSaveImage = async () => {
-  if (!imageToEdit && !preview) return;
-  
-  const imageSource = imageToEdit || preview;
-  
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  
-  const img = new Image();
-  img.src = imageSource;
-  
-  await new Promise((resolve) => {
-    img.onload = () => {
-      // Set canvas size to cropped area or full image
-      canvas.width = isCropping ? cropRect.width : img.width;
-      canvas.height = isCropping ? cropRect.height : img.height;
-      
-      // Apply rotation
-      if (rotation !== 0) {
-        ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.rotate(rotation * Math.PI / 180);
-        ctx.translate(-canvas.width / 2, -canvas.height / 2);
-      }
-      
-      // Draw image (cropped or full)
-      if (isCropping) {
-        ctx.drawImage(
-          img,
-          cropRect.x, cropRect.y, cropRect.width, cropRect.height,
-          0, 0, canvas.width, canvas.height
-        );
-      } else {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      }
-      
-      if (rotation !== 0) {
-        ctx.restore();
-      }
-      
-      // Apply brightness
-      ctx.filter = `brightness(${brightness}%)`;
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.drawImage(canvas, 0, 0);
-      
-      // Draw annotations if in draw mode
-      if (editorMode === 'draw' && drawingCanvasRef.current) {
-        const drawCanvas = drawingCanvasRef.current;
-        const drawCtx = drawCanvas.getContext('2d');
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCanvas.width = drawCanvas.width;
-        tempCanvas.height = drawCanvas.height;
-        
-        tempCtx.drawImage(drawCanvas, 0, 0);
-        
-        ctx.drawImage(
-          tempCanvas,
-          isCropping ? cropRect.x : 0,
-          isCropping ? cropRect.y : 0,
-          isCropping ? cropRect.width : canvas.width,
-          isCropping ? cropRect.height : canvas.height,
-          0, 0, canvas.width, canvas.height
-        );
-      }
-      
-      canvas.toBlob((blob) => {
-        const url = URL.createObjectURL(blob);
-        onImageCaptured(url);
-        onClose();
-      }, 'image/png', 0.9);
-      resolve();
-    };
-  });
-};
-  useEffect(() => {
-  if (preview && mode === "photo" && !isCropping) {
-    // Auto-enter crop mode when an image is selected from native camera
-    setImageToEdit(preview);
+  const handleSaveImage = async () => {
+    if (!imageToEdit && !preview) return;
+    
+    const imageSource = imageToEdit || preview;
+    
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
     const img = new Image();
-    img.onload = () => {
-      setImageDimensions({ width: img.width, height: img.height });
-      setIsCropping(true);
-    };
-    img.src = preview;
-  }
-}, [preview, mode, isCropping]);
+    img.src = imageSource;
+    
+    await new Promise((resolve) => {
+      img.onload = () => {
+        // Set canvas size to cropped area or full image
+        canvas.width = isCropping ? cropRect.width : img.width;
+        canvas.height = isCropping ? cropRect.height : img.height;
+        
+        // Apply rotation
+        if (rotation !== 0) {
+          ctx.save();
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          ctx.rotate(rotation * Math.PI / 180);
+          ctx.translate(-canvas.width / 2, -canvas.height / 2);
+        }
+        
+        // Draw image (cropped or full)
+        if (isCropping) {
+          ctx.drawImage(
+            img,
+            cropRect.x, cropRect.y, cropRect.width, cropRect.height,
+            0, 0, canvas.width, canvas.height
+          );
+        } else {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        }
+        
+        if (rotation !== 0) {
+          ctx.restore();
+        }
+        
+        // Apply brightness
+        ctx.filter = `brightness(${brightness}%)`;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(canvas, 0, 0);
+        
+        // Draw annotations if in draw mode
+        if (editorMode === 'draw' && drawingCanvasRef.current) {
+          const drawCanvas = drawingCanvasRef.current;
+          const drawCtx = drawCanvas.getContext('2d');
+          const tempCanvas = document.createElement('canvas');
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCanvas.width = drawCanvas.width;
+          tempCanvas.height = drawCanvas.height;
+          
+          tempCtx.drawImage(drawCanvas, 0, 0);
+          
+          ctx.drawImage(
+            tempCanvas,
+            isCropping ? cropRect.x : 0,
+            isCropping ? cropRect.y : 0,
+            isCropping ? cropRect.width : canvas.width,
+            isCropping ? cropRect.height : canvas.height,
+            0, 0, canvas.width, canvas.height
+          );
+        }
+        
+        canvas.toBlob((blob) => {
+          const url = URL.createObjectURL(blob);
+          onImageCaptured(url);
+          onClose();
+        }, 'image/png', 0.9);
+        resolve();
+      };
+    });
+  };
 
   const handleSaveVideo = () => {
     if (preview) {
@@ -1714,7 +1723,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           {["nw", "ne", "sw", "se"].map((corner) => {
             const style = {
               position: "absolute",
-              width: "30px", // Larger for touch
+              width: "30px",
               height: "30px",
               backgroundColor: "white",
               border: "2px solid #10b981",
@@ -1767,7 +1776,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     let newY = startCrop.y;
 
                     if (corner === "nw") {
-                      newWidth = Math.max(100, startCrop.width - deltaX); // Larger minimum for mobile
+                      newWidth = Math.max(100, startCrop.width - deltaX);
                       newHeight = Math.max(100, startCrop.height - deltaY);
                       newX = startCrop.x + deltaX;
                       newY = startCrop.y + deltaY;
@@ -1820,40 +1829,45 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     );
   };
 
-const resetStates = () => {
-  setPreview(null);
-  setImageToEdit(null);
-  setIsCropping(false);
-  setIsRecording(false);
-  setRecordedVideo(null);
-  setElements([]);
-  setDrawHistory([]);
-  setHistoryStep(-1);
-  setRotation(0);
-  setBrightness(100);
-  setEditorMode('crop');
-  setDrawColor('#ff0000');
-  setDrawTool('pen');
-  setTextInput('');
-  setTextPosition(null);
-  setSelectedElement(null);
-  setShowDeleteZone(false);
-  setIsOverDeleteZone(false);
-  setCameraError(null);
-  setUseNativeCamera(false);
-  // Clear file input
-  if (fileInputRef.current) {
-    fileInputRef.current.value = '';
-  }
-  // Stop camera stream
-  if (stream) {
-    stream.getTracks().forEach(track => {
-      track.stop();
-      track.enabled = false;
-    });
-    setStream(null);
-  }
-};
+  const resetStates = () => {
+    setPreview(null);
+    setImageToEdit(null);
+    setIsCropping(false);
+    setIsRecording(false);
+    setRecordedVideo(null);
+    setElements([]);
+    setDrawHistory([]);
+    setHistoryStep(-1);
+    setRotation(0);
+    setBrightness(100);
+    setEditorMode("crop");
+    setDrawColor("#ff0000");
+    setDrawTool("pen");
+    setTextInput("");
+    setTextPosition(null);
+    setSelectedElement(null);
+    setShowDeleteZone(false);
+    setIsOverDeleteZone(false);
+    setCameraError(null);
+    setUseNativeCamera(false);
+    setIsProcessingNativeImage(false);
+    setNativeImageLoaded(false);
+    
+    // Clear file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    
+    // Stop camera stream
+    if (stream) {
+      stream.getTracks().forEach((track) => {
+        track.stop();
+        track.enabled = false;
+      });
+      setStream(null);
+    }
+  };
+
   // Add hidden file input for native camera
   const renderNativeCameraInput = () => (
     <input
@@ -1892,7 +1906,7 @@ const resetStates = () => {
         touchAction: "none",
       }}
       onClick={() => {
-        if (!isCropping && !textPosition) {
+        if (!isCropping && !textPosition && !isProcessingNativeImage) {
           stopCamera();
           resetStates();
           onClose();
@@ -1935,7 +1949,12 @@ const resetStates = () => {
               margin: 0,
             }}
           >
-            {mode === "video" ? (
+            {isProcessingNativeImage ? (
+              <>
+                <MdCamera style={{ fontSize: "1.25rem" }} />
+                <span>Processing Image...</span>
+              </>
+            ) : mode === "video" ? (
               <>
                 <MdVideocam style={{ fontSize: "1.25rem" }} />
                 <span>Record Video</span>
@@ -1989,204 +2008,259 @@ const resetStates = () => {
             flexDirection: "column",
           }}
         >
-          {(isCropping || (mode === "photo" && preview && !useNativeCamera)) ? (
-  <div 
-    ref={containerRef}
-    style={{ 
-      position: "relative",
-      width: "100%",
-      height: "50vh",
-      minHeight: "300px",
-      borderRadius: "8px",
-      overflow: "hidden",
-      backgroundColor: "#000",
-      marginBottom: "1rem",
-      touchAction: 'none'
-    }}
-    onMouseDown={editorMode === 'draw' ? handleInteractionStart : undefined}
-    onMouseMove={editorMode === 'draw' ? handleInteractionMove : undefined}
-    onMouseUp={editorMode === 'draw' ? handleInteractionEnd : undefined}
-    onTouchStart={editorMode === 'draw' ? handleInteractionStart : undefined}
-    onTouchMove={editorMode === 'draw' ? handleInteractionMove : undefined}
-    onTouchEnd={editorMode === 'draw' ? handleInteractionEnd : undefined}
-    onClick={editorMode === 'draw' ? handleCanvasClick : undefined}
-  >
-    <img
-      src={imageToEdit || preview}
-      alt="Edit preview"
-      style={{
-        width: '100%',
-        height: '100%',
-        objectFit: 'contain',
-        transform: `rotate(${rotation}deg)`,
-        filter: `brightness(${brightness}%)`,
-        ...(textPosition && {
-          filter: `brightness(${brightness}%) blur(2px)`,
-          opacity: 0.7
-        })
-      }}
-    />
-    
-    {/* Delete Zone (shown when dragging element) */}
-    {showDeleteZone && (
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: '60px',
-        backgroundColor: isOverDeleteZone ? 'rgba(239, 68, 68, 0.8)' : 'rgba(239, 68, 68, 0.4)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        transition: 'background-color 0.3s ease',
-        zIndex: 50,
-        touchAction: 'none'
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          color: 'white',
-          fontWeight: '600',
-          fontSize: '0.9rem'
-        }}>
-          <MdDelete size={28} />
-          <span>Drag here to delete</span>
-        </div>
-      </div>
-    )}
-    
-    {editorMode === 'crop' && renderCropOverlay()}
-    
-    {/* Drawing Canvas Overlay */}
-    {editorMode === 'draw' && (
-      <canvas
-        ref={drawingCanvasRef}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          cursor: drawTool === 'text' ? 'text' : 'crosshair',
-          touchAction: 'none'
-        }}
-      />
-    )}
-    
-    {/* Text Input Overlay */}
-    {textPosition && (
-      <div style={{
-        position: 'absolute',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-        backgroundColor: 'rgba(0, 0, 0, 0.85)',
-        padding: '1rem',
-        borderRadius: '0.5rem',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.5rem',
-        minWidth: '300px',
-        width: '80%',
-        maxWidth: '400px',
-        zIndex: 100,
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)'
-      }}>
-        <span style={{ 
-          color: 'white', 
-          fontWeight: '600',
-          fontSize: '1rem',
-          marginBottom: '0.5rem'
-        }}>
-          Add Text
-        </span>
-        <input
-          type="text"
-          value={textInput}
-          onChange={(e) => setTextInput(e.target.value)}
-          placeholder="Type text and press Enter..."
-          autoFocus
-          style={{
-            padding: '0.75rem',
-            borderRadius: '0.25rem',
-            border: '1px solid #4b5563',
-            backgroundColor: 'rgba(255, 255, 255, 0.1)',
-            color: 'white',
-            fontSize: '1rem',
-            WebkitAppearance: 'none',
-            MozAppearance: 'textfield'
-          }}
-          onKeyPress={handleKeyPress}
-        />
-        <div style={{
-          display: 'flex',
-          gap: '0.5rem',
-          justifyContent: 'flex-end',
-          marginTop: '0.5rem'
-        }}>
-          <button
-            onClick={() => {
-              setTextPosition(null);
-              setTextInput('');
-            }}
-            style={{
-              padding: '0.75rem 1.5rem',
-              backgroundColor: 'rgba(107, 114, 128, 0.5)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.25rem',
-              cursor: 'pointer',
-              fontSize: '0.9rem',
-              touchAction: 'manipulation'
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleTextSubmit}
-            disabled={!textInput.trim()}
-            style={{
-              padding: '0.75rem 1.5rem',
-              backgroundColor: textInput.trim() ? '#10b981' : '#4b5563',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.25rem',
-              cursor: textInput.trim() ? 'pointer' : 'not-allowed',
-              fontSize: '0.9rem',
-              opacity: textInput.trim() ? 1 : 0.5,
-              touchAction: 'manipulation'
-            }}
-          >
-            Add
-          </button>
-        </div>
-      </div>
-    )}
-  </div>
-) : mode === "video" && preview ? (
-  <div style={{
-    position: "relative",
-    borderRadius: "8px",
-    overflow: "hidden",
-    backgroundColor: "#000",
-    marginBottom: "1rem",
-    minHeight: "300px"
-  }}>
-    <video
-      src={preview}
-      controls
-      style={{
-        width: "100%",
-        height: "auto",
-        maxHeight: "50vh",
-        objectFit: "contain",
-        display: "block"
-      }}
-    />
-  </div>
+          {isProcessingNativeImage ? (
+            <div
+              style={{
+                position: "relative",
+                borderRadius: "8px",
+                overflow: "hidden",
+                backgroundColor: "#000",
+                marginBottom: "1rem",
+                minHeight: "300px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexDirection: "column",
+              }}
+            >
+              <div
+                style={{
+                  color: "white",
+                  textAlign: "center",
+                  padding: "2rem",
+                }}
+              >
+                <div
+                  style={{
+                    width: "60px",
+                    height: "60px",
+                    border: "4px solid #f3f4f6",
+                    borderTop: "4px solid #10b981",
+                    borderRadius: "50%",
+                    animation: "spin 1s linear infinite",
+                    margin: "0 auto 1rem",
+                  }}
+                />
+                <h3 style={{ marginBottom: "0.5rem" }}>
+                  Loading Image...
+                </h3>
+                <p style={{ fontSize: "0.9rem", color: "#9ca3af" }}>
+                  Please wait while your image is being prepared for editing
+                </p>
+              </div>
+            </div>
+          ) : isCropping || (mode === "photo" && preview) ? (
+            <div
+              ref={containerRef}
+              style={{
+                position: "relative",
+                width: "100%",
+                height: "50vh",
+                minHeight: "300px",
+                borderRadius: "8px",
+                overflow: "hidden",
+                backgroundColor: "#000",
+                marginBottom: "1rem",
+                touchAction: "none",
+              }}
+              onMouseDown={editorMode === "draw" ? handleInteractionStart : undefined}
+              onMouseMove={editorMode === "draw" ? handleInteractionMove : undefined}
+              onMouseUp={editorMode === "draw" ? handleInteractionEnd : undefined}
+              onTouchStart={editorMode === "draw" ? handleInteractionStart : undefined}
+              onTouchMove={editorMode === "draw" ? handleInteractionMove : undefined}
+              onTouchEnd={editorMode === "draw" ? handleInteractionEnd : undefined}
+              onClick={editorMode === "draw" ? handleCanvasClick : undefined}
+            >
+              <img
+                src={imageToEdit || preview}
+                alt="Edit preview"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  transform: `rotate(${rotation}deg)`,
+                  filter: `brightness(${brightness}%)`,
+                  ...(textPosition && {
+                    filter: `brightness(${brightness}%) blur(2px)`,
+                    opacity: 0.7,
+                  }),
+                }}
+              />
+
+              {/* Delete Zone (shown when dragging element) */}
+              {showDeleteZone && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: "60px",
+                    backgroundColor: isOverDeleteZone
+                      ? "rgba(239, 68, 68, 0.8)"
+                      : "rgba(239, 68, 68, 0.4)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transition: "background-color 0.3s ease",
+                    zIndex: 50,
+                    touchAction: "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      color: "white",
+                      fontWeight: "600",
+                      fontSize: "0.9rem",
+                    }}
+                  >
+                    <MdDelete size={28} />
+                    <span>Drag here to delete</span>
+                  </div>
+                </div>
+              )}
+
+              {editorMode === "crop" && renderCropOverlay()}
+
+              {/* Drawing Canvas Overlay */}
+              {editorMode === "draw" && (
+                <canvas
+                  ref={drawingCanvasRef}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    height: "100%",
+                    cursor: drawTool === "text" ? "text" : "crosshair",
+                    touchAction: "none",
+                  }}
+                />
+              )}
+
+              {/* Text Input Overlay */}
+              {textPosition && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    backgroundColor: "rgba(0, 0, 0, 0.85)",
+                    padding: "1rem",
+                    borderRadius: "0.5rem",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.5rem",
+                    minWidth: "300px",
+                    width: "80%",
+                    maxWidth: "400px",
+                    zIndex: 100,
+                    backdropFilter: "blur(4px)",
+                    WebkitBackdropFilter: "blur(4px)",
+                  }}
+                >
+                  <span
+                    style={{
+                      color: "white",
+                      fontWeight: "600",
+                      fontSize: "1rem",
+                      marginBottom: "0.5rem",
+                    }}
+                  >
+                    Add Text
+                  </span>
+                  <input
+                    type="text"
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                    placeholder="Type text and press Enter..."
+                    autoFocus
+                    style={{
+                      padding: "0.75rem",
+                      borderRadius: "0.25rem",
+                      border: "1px solid #4b5563",
+                      backgroundColor: "rgba(255, 255, 255, 0.1)",
+                      color: "white",
+                      fontSize: "1rem",
+                      WebkitAppearance: "none",
+                      MozAppearance: "textfield",
+                    }}
+                    onKeyPress={handleKeyPress}
+                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "0.5rem",
+                      justifyContent: "flex-end",
+                      marginTop: "0.5rem",
+                    }}
+                  >
+                    <button
+                      onClick={() => {
+                        setTextPosition(null);
+                        setTextInput("");
+                      }}
+                      style={{
+                        padding: "0.75rem 1.5rem",
+                        backgroundColor: "rgba(107, 114, 128, 0.5)",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "0.25rem",
+                        cursor: "pointer",
+                        fontSize: "0.9rem",
+                        touchAction: "manipulation",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleTextSubmit}
+                      disabled={!textInput.trim()}
+                      style={{
+                        padding: "0.75rem 1.5rem",
+                        backgroundColor: textInput.trim() ? "#10b981" : "#4b5563",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "0.25rem",
+                        cursor: textInput.trim() ? "pointer" : "not-allowed",
+                        fontSize: "0.9rem",
+                        opacity: textInput.trim() ? 1 : 0.5,
+                        touchAction: "manipulation",
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : mode === "video" && preview ? (
+            <div
+              style={{
+                position: "relative",
+                borderRadius: "8px",
+                overflow: "hidden",
+                backgroundColor: "#000",
+                marginBottom: "1rem",
+                minHeight: "300px",
+              }}
+            >
+              <video
+                src={preview}
+                controls
+                style={{
+                  width: "100%",
+                  height: "auto",
+                  maxHeight: "50vh",
+                  objectFit: "contain",
+                  display: "block",
+                }}
+              />
+            </div>
           ) : useNativeCamera ? (
             <div
               style={{
@@ -2303,7 +2377,7 @@ const resetStates = () => {
                     maxWidth: "200px",
                   }}
                 >
-                  Back
+                  Back to Web Camera
                 </button>
 
                 <button
@@ -2558,7 +2632,7 @@ const resetStates = () => {
         </div>
 
         {/* Editor Controls */}
-{(isCropping || (mode === "photo" && preview)) && (
+        {(isCropping || (mode === "photo" && preview && !useNativeCamera)) && (
           <div
             style={{
               padding: "1rem",
@@ -3034,7 +3108,7 @@ const resetStates = () => {
         )}
 
         {/* Footer Buttons (when not cropping) */}
-        {!isCropping && (
+        {!isCropping && !isProcessingNativeImage && (
           <div
             style={{
               padding: "1rem",
@@ -3110,9 +3184,9 @@ const resetStates = () => {
                 </label>
               )}
 
-              {preview && (
+              {preview && mode === "video" && (
                 <button
-                  onClick={mode === "video" ? handleSaveVideo : handleSaveImage}
+                  onClick={handleSaveVideo}
                   style={{
                     background:
                       "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
@@ -3128,13 +3202,19 @@ const resetStates = () => {
                     touchAction: "manipulation",
                   }}
                 >
-                  {mode === "video" ? "Use Video" : "Use Photo"}
+                  Use Video
                 </button>
               )}
             </div>
           </div>
         )}
       </div>
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
