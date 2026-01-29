@@ -460,74 +460,33 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const [cameraError, setCameraError] = useState(null);
   const [cameraType, setCameraType] = useState("environment");
   const [processingImage, setProcessingImage] = useState(false);
-  const [cameraAccessMethod, setCameraAccessMethod] = useState("direct");
-  const [isPointerDown, setIsPointerDown] = useState(false);
-  const [currentPointerId, setCurrentPointerId] = useState(null);
-  const [drawingScale, setDrawingScale] = useState(1);
-  const [drawingOffset, setDrawingOffset] = useState({ x: 0, y: 0 });
+  const [cameraAccessMethod, setCameraAccessMethod] = useState("direct"); // 'direct' or 'native'
 
-  // Check if mobile device
-  const isMobile = () => {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  };
-
+  // Check if Android device
   const isAndroid = () => {
     return /Android/i.test(navigator.userAgent);
   };
 
+  // Check if PWA installed
   const isPWA = () => {
     return window.matchMedia('(display-mode: standalone)').matches || 
            window.navigator.standalone === true ||
            document.referrer.includes('android-app://');
   };
 
-  // Initialize low-latency canvas context
-  const getDrawingContext = useCallback(() => {
-    if (!drawingCanvasRef.current) return null;
-    
-    try {
-      // Try to get desynchronized context for better performance
-      const ctx = drawingCanvasRef.current.getContext('2d', { 
-        desynchronized: true,
-        alpha: true 
-      });
-      return ctx;
-    } catch (e) {
-      // Fallback to regular context
-      return drawingCanvasRef.current.getContext('2d');
-    }
-  }, []);
-
   useEffect(() => {
     if (isOpen) {
-      // Prevent all scrolling when modal is open
       document.body.style.overflow = "hidden";
-      document.body.style.position = "fixed";
-      document.body.style.width = "100%";
-      document.body.style.height = "100%";
-      document.documentElement.style.overflow = "hidden";
-      document.documentElement.style.touchAction = "none";
-      
-      if (isMobile()) {
+      // For Android PWA, default to native camera for better compatibility
+      if (isAndroid() && isPWA()) {
         setCameraAccessMethod("native");
       }
     } else {
-      // Restore scrolling when modal closes
       document.body.style.overflow = "auto";
-      document.body.style.position = "";
-      document.body.style.width = "";
-      document.body.style.height = "";
-      document.documentElement.style.overflow = "auto";
-      document.documentElement.style.touchAction = "auto";
     }
 
     return () => {
       document.body.style.overflow = "auto";
-      document.body.style.position = "";
-      document.body.style.width = "";
-      document.body.style.height = "";
-      document.documentElement.style.overflow = "auto";
-      document.documentElement.style.touchAction = "auto";
       stopCamera();
     };
   }, [isOpen]);
@@ -557,41 +516,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     }
   }, [isCropping, imageToEdit, imageDimensions]);
 
-  // Calculate drawing scale and offset when image loads
-  useEffect(() => {
-    if (!containerRef.current || !imageDimensions.width || !imageDimensions.height) return;
-
-    const container = containerRef.current;
-    const containerRect = container.getBoundingClientRect();
-    
-    // Calculate how the image is displayed within the container
-    const containerAspect = containerRect.width / containerRect.height;
-    const imageAspect = imageDimensions.width / imageDimensions.height;
-    
-    let displayWidth, displayHeight, offsetX, offsetY;
-    
-    if (containerAspect > imageAspect) {
-      // Container is wider than image (letterboxing on sides)
-      displayHeight = containerRect.height;
-      displayWidth = imageAspect * displayHeight;
-      offsetX = (containerRect.width - displayWidth) / 2;
-      offsetY = 0;
-    } else {
-      // Container is taller than image (letterboxing top/bottom)
-      displayWidth = containerRect.width;
-      displayHeight = displayWidth / imageAspect;
-      offsetX = 0;
-      offsetY = (containerRect.height - displayHeight) / 2;
-    }
-    
-    // Calculate scale from display size to actual image size
-    const scale = imageDimensions.width / displayWidth;
-    
-    setDrawingScale(scale);
-    setDrawingOffset({ x: offsetX, y: offsetY });
-    
-  }, [imageDimensions, containerRef.current]);
-
   const initializeCamera = async () => {
     try {
       setCameraError(null);
@@ -608,7 +532,8 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         audio: false,
       };
 
-      if (isMobile()) {
+      // Android-specific constraints
+      if (isAndroid()) {
         constraints.video = {
           facingMode: {
             ideal: cameraType === "environment" ? "environment" : "user",
@@ -646,7 +571,8 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       console.error("Camera initialization error:", err);
       setCameraError(err.message || "Cannot access camera");
       
-      if (isMobile()) {
+      // For Android, suggest using native camera
+      if (isAndroid()) {
         setCameraError("Direct camera access failed. Please use native camera.");
         setCameraAccessMethod("native");
       }
@@ -668,7 +594,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         audio: true,
       };
 
-      if (isMobile()) {
+      if (isAndroid()) {
         constraints.video = {
           width: { min: 640, ideal: 1280 },
           height: { min: 480, ideal: 720 },
@@ -694,6 +620,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         }
       }
 
+      // Initialize MediaRecorder
       const options = { mimeType: "video/webm;codecs=vp9,opus" };
       if (!MediaRecorder.isTypeSupported(options.mimeType)) {
         options.mimeType = "video/webm;codecs=vp8,opus";
@@ -858,10 +785,12 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     stopCamera();
   };
 
+  // ANDROID-SPECIFIC FIX: Handle file input for native camera
   const handleFileInput = (e, inputType) => {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Reset input for Android compatibility
     e.target.value = '';
 
     setProcessingImage(true);
@@ -872,6 +801,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         const img = new Image();
         img.onload = () => {
           const imageDataUrl = ev.target.result;
+          console.log("Android native image loaded:", img.width, "x", img.height);
           setImageToEdit(imageDataUrl);
           setPreview(imageDataUrl);
           setImageDimensions({ width: img.width, height: img.height });
@@ -881,6 +811,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           stopCamera();
         };
         img.onerror = () => {
+          console.error("Failed to load image on Android");
           setCameraError("Failed to load image. Please try again.");
           setProcessingImage(false);
         };
@@ -893,6 +824,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       }
     };
     reader.onerror = () => {
+      console.error("File reading error on Android");
       setCameraError("Failed to read file. Please try again.");
       setProcessingImage(false);
     };
@@ -902,11 +834,13 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const openNativeCamera = (inputType) => {
     setProcessingImage(true);
     if (inputType === "photo" && photoInputRef.current) {
+      // Clear and trigger photo input
       photoInputRef.current.value = "";
       setTimeout(() => {
         photoInputRef.current.click();
       }, 100);
     } else if (inputType === "video" && videoInputRef.current) {
+      // Clear and trigger video input
       videoInputRef.current.value = "";
       setTimeout(() => {
         videoInputRef.current.click();
@@ -914,68 +848,37 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     }
   };
 
-  // FIXED: Unified pointer event handling for PWA
-  const getCanvasCoordinates = useCallback((event) => {
-    if (!containerRef.current || !imageDimensions.width || !imageDimensions.height) {
-      return { x: 0, y: 0 };
-    }
+  // Drawing functions
+  const getCanvasCoordinates = (event) => {
+    if (!containerRef.current) return { x: 0, y: 0 };
 
     const container = containerRef.current;
     const rect = container.getBoundingClientRect();
-    
-    // Get coordinates from pointer event
-    let clientX, clientY;
-    if (event.type.includes('touch')) {
-      // Touch event
-      if (event.touches && event.touches.length > 0) {
-        clientX = event.touches[0].clientX;
-        clientY = event.touches[0].clientY;
-      } else if (event.changedTouches && event.changedTouches.length > 0) {
-        clientX = event.changedTouches[0].clientX;
-        clientY = event.changedTouches[0].clientY;
-      }
-    } else {
-      // Mouse/Pointer event
-      clientX = event.clientX;
-      clientY = event.clientY;
-    }
 
-    // Calculate relative position within container
-    const relativeX = clientX - rect.left;
-    const relativeY = clientY - rect.top;
+    const clientX =
+      event.clientX || (event.touches && event.touches[0].clientX) || 0;
+    const clientY =
+      event.clientY || (event.touches && event.touches[0].clientY) || 0;
 
-    // Apply drawing offset and scale to convert to image coordinates
-    const imageX = (relativeX - drawingOffset.x) * drawingScale;
-    const imageY = (relativeY - drawingOffset.y) * drawingScale;
+    const scaleX = imageDimensions.width / rect.width;
+    const scaleY = imageDimensions.height / rect.height;
+    const scale = Math.min(scaleX, scaleY);
 
-    // Clamp to image bounds
-    return {
-      x: Math.max(0, Math.min(imageDimensions.width, imageX)),
-      y: Math.max(0, Math.min(imageDimensions.height, imageY))
-    };
-  }, [imageDimensions, drawingOffset, drawingScale]);
+    const offsetX = (rect.width - imageDimensions.width / scale) / 2;
+    const offsetY = (rect.height - imageDimensions.height / scale) / 2;
 
-  // Unified pointer down handler
-  const handlePointerDown = useCallback((e) => {
+    const x = (clientX - rect.left - offsetX) * scale;
+    const y = (clientY - rect.top - offsetY) * scale;
+
+    return { x, y };
+  };
+
+  const handleMouseDown = (e) => {
     if (editorMode !== "draw") return;
-    
-    // Prevent default to stop scrolling/zooming in PWA
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Set pointer capture for consistent tracking
-    if (containerRef.current && e.pointerId) {
-      containerRef.current.setPointerCapture(e.pointerId);
-      setCurrentPointerId(e.pointerId);
-    }
-    
-    setIsPointerDown(true);
-    
+
     const coords = getCanvasCoordinates(e);
-    
-    // Check if user clicked on existing element
     const clickedElement = findElementAtPosition(coords.x, coords.y);
-    
+
     if (clickedElement) {
       setSelectedElement(clickedElement);
       const offsetX = coords.x - clickedElement.x;
@@ -985,14 +888,14 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       setShowDeleteZone(true);
       return;
     }
-    
+
     setSelectedElement(null);
-    
+
     if (drawTool === "text") {
       setTextPosition(coords);
       return;
     }
-    
+
     setIsDrawing(true);
     
     if (drawTool === "pen") {
@@ -1012,38 +915,31 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         height: 0,
       });
     }
-  }, [editorMode, drawTool, drawColor, getCanvasCoordinates]);
+  };
 
-  // Unified pointer move handler
-  const handlePointerMove = useCallback((e) => {
-    if (editorMode !== "draw" || !isPointerDown) return;
-    
-    e.preventDefault();
-    e.stopPropagation();
-    
+  const handleMouseMove = (e) => {
+    if (editorMode !== "draw") return;
+
     const coords = getCanvasCoordinates(e);
-    
+
     if (isDraggingElement && selectedElement) {
-      // Handle element dragging
-      const containerRect = containerRef.current?.getBoundingClientRect();
-      if (containerRect) {
-        const deleteZoneTop = 50;
-        const isOverDelete = e.clientY - containerRect.top < deleteZoneTop;
-        setIsOverDeleteZone(isOverDelete);
-      }
-      
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const deleteZoneTop = 50;
+      const isOverDelete = e.clientY - containerRect.top < deleteZoneTop;
+      setIsOverDeleteZone(isOverDelete);
+
       const newX = coords.x - dragOffset.x;
       const newY = coords.y - dragOffset.y;
-      
+
       const updatedElements = elements.map((el) =>
         el.id === selectedElement.id ? { ...el, x: newX, y: newY } : el,
       );
       setElements(updatedElements);
       return;
     }
-    
-    if (!isDrawing || !tempElement) return;
-    
+
+    if (!isDrawing) return;
+
     if (drawTool === "pen") {
       setTempElement((prev) => ({
         ...prev,
@@ -1056,91 +952,40 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         height: coords.y - prev.y,
       }));
     }
-    
-    // Force immediate render for smooth drawing
-    renderDrawing();
-  }, [editorMode, isPointerDown, isDraggingElement, selectedElement, isDrawing, tempElement, drawTool, elements, dragOffset, getCanvasCoordinates]);
+  };
 
-  // Unified pointer up handler
-  const handlePointerUp = useCallback((e) => {
-    if (editorMode !== "draw") return;
-    
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Release pointer capture
-    if (containerRef.current && currentPointerId) {
-      containerRef.current.releasePointerCapture(currentPointerId);
-      setCurrentPointerId(null);
-    }
-    
+  const handleMouseUp = () => {
     if (isDraggingElement && selectedElement) {
       if (isOverDeleteZone) {
         deleteElement(selectedElement);
       }
-      
+
       setIsDraggingElement(false);
       setIsOverDeleteZone(false);
       setShowDeleteZone(false);
       saveDrawingState();
-      setIsPointerDown(false);
       return;
     }
-    
-    if (!isDrawing || !tempElement) {
-      setIsPointerDown(false);
-      return;
-    }
-    
+
+    if (!isDrawing || !tempElement) return;
+
     if (drawTool === "pen" && tempElement.points.length < 2) {
       setIsDrawing(false);
       setTempElement(null);
-      setIsPointerDown(false);
       return;
     }
-    
+
     const newElement = {
       ...tempElement,
       id: Date.now() + Math.random(),
     };
-    
+
     setElements([...elements, newElement]);
     saveDrawingState();
-    
+
     setIsDrawing(false);
     setTempElement(null);
-    setIsPointerDown(false);
-  }, [editorMode, isDraggingElement, selectedElement, isDrawing, tempElement, drawTool, elements, currentPointerId, isOverDeleteZone]);
-
-  // Handle pointer leave/cancel
-  const handlePointerCancel = useCallback((e) => {
-    if (editorMode !== "draw") return;
-    
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (currentPointerId && containerRef.current) {
-      containerRef.current.releasePointerCapture(currentPointerId);
-    }
-    
-    setIsPointerDown(false);
-    setIsDraggingElement(false);
-    setIsDrawing(false);
-    setTempElement(null);
-  }, [editorMode, currentPointerId]);
-
-  // Touch-specific handlers as fallback
-  const handleTouchStart = useCallback((e) => {
-    handlePointerDown(e);
-  }, [handlePointerDown]);
-
-  const handleTouchMove = useCallback((e) => {
-    handlePointerMove(e);
-  }, [handlePointerMove]);
-
-  const handleTouchEnd = useCallback((e) => {
-    handlePointerUp(e);
-  }, [handlePointerUp]);
+  };
 
   const findElementAtPosition = (x, y) => {
     for (const element of elements) {
@@ -1257,7 +1102,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     if (historyStep > 0) {
       setHistoryStep(historyStep - 1);
       setElements(drawHistory[historyStep - 1].elements);
-      renderDrawing();
     }
   };
 
@@ -1265,7 +1109,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     if (historyStep < drawHistory.length - 1) {
       setHistoryStep(historyStep + 1);
       setElements(drawHistory[historyStep + 1].elements);
-      renderDrawing();
     }
   };
 
@@ -1274,7 +1117,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     setElements(newElements);
     setSelectedElement(null);
     saveDrawingState();
-    renderDrawing();
   };
 
   const getElementBounds = (element) => {
@@ -1329,21 +1171,14 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     ctx.strokeStyle = element.color;
     ctx.fillStyle = element.color;
     ctx.lineWidth = element.type === "pen" ? element.width : 3;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
 
     if (element.type === "pen") {
       ctx.beginPath();
-      if (element.points.length === 1) {
-        ctx.arc(element.points[0].x, element.points[0].y, element.width / 2, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.moveTo(element.points[0].x, element.points[0].y);
-        for (let i = 1; i < element.points.length; i++) {
-          ctx.lineTo(element.points[i].x, element.points[i].y);
-        }
-        ctx.stroke();
-      }
+      ctx.moveTo(element.points[0].x, element.points[0].y);
+      element.points.forEach((point) => {
+        ctx.lineTo(point.x, point.y);
+      });
+      ctx.stroke();
     } else if (element.type === "arrow") {
       const fromX = element.x;
       const fromY = element.y;
@@ -1403,17 +1238,15 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const renderDrawing = () => {
     if (!drawingCanvasRef.current || !imageDimensions.width) return;
 
-    const ctx = getDrawingContext();
-    if (!ctx) return;
+    const canvas = drawingCanvasRef.current;
+    const ctx = canvas.getContext("2d");
 
-    ctx.clearRect(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw all elements
     elements.forEach((element) => {
       drawElement(ctx, element, selectedElement?.id === element.id);
     });
 
-    // Draw temporary element (currently being drawn)
     if (tempElement) {
       drawElement(ctx, tempElement);
     }
@@ -1421,7 +1254,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
   useEffect(() => {
     renderDrawing();
-  }, [elements, tempElement, selectedElement, imageDimensions, getDrawingContext]);
+  }, [elements, tempElement, selectedElement, imageDimensions]);
 
   useEffect(() => {
     if (imageToEdit && editorMode === "draw" && drawingCanvasRef.current) {
@@ -1433,11 +1266,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         setElements([]);
         setDrawHistory([]);
         setHistoryStep(-1);
-        renderDrawing();
       };
       img.src = imageToEdit;
     }
-  }, [imageToEdit, editorMode, getDrawingContext]);
+  }, [imageToEdit, editorMode]);
 
   const handleSaveImage = async () => {
     if (!imageToEdit && !preview) return;
@@ -1482,6 +1314,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         
         if (editorMode === 'draw' && drawingCanvasRef.current) {
           const drawCanvas = drawingCanvasRef.current;
+          const drawCtx = drawCanvas.getContext('2d');
           const tempCanvas = document.createElement('canvas');
           const tempCtx = tempCanvas.getContext('2d');
           tempCanvas.width = drawCanvas.width;
@@ -1524,30 +1357,17 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     if (!containerRef.current || !imageDimensions.width) return null;
 
     const rect = containerRef.current.getBoundingClientRect();
-    
-    const containerAspect = rect.width / rect.height;
-    const imageAspect = imageDimensions.width / imageDimensions.height;
-    
-    let displayWidth, displayHeight, offsetX, offsetY;
-    
-    if (containerAspect > imageAspect) {
-      displayHeight = rect.height;
-      displayWidth = imageAspect * displayHeight;
-      offsetX = (rect.width - displayWidth) / 2;
-      offsetY = 0;
-    } else {
-      displayWidth = rect.width;
-      displayHeight = displayWidth / imageAspect;
-      offsetX = 0;
-      offsetY = (rect.height - displayHeight) / 2;
-    }
+    const scaleX = imageDimensions.width / rect.width;
+    const scaleY = imageDimensions.height / rect.height;
+    const scale = Math.min(scaleX, scaleY);
 
-    const scale = imageDimensions.width / displayWidth;
+    const offsetX = (rect.width - imageDimensions.width / scale) / 2;
+    const offsetY = (rect.height - imageDimensions.height / scale) / 2;
 
-    const screenX = cropRect.x / scale + offsetX;
-    const screenY = cropRect.y / scale + offsetY;
-    const screenWidth = cropRect.width / scale;
-    const screenHeight = cropRect.height / scale;
+    const screenX = cropRect.x * scale + offsetX;
+    const screenY = cropRect.y * scale + offsetY;
+    const screenWidth = cropRect.width * scale;
+    const screenHeight = cropRect.height * scale;
 
     return (
       <div
@@ -1558,21 +1378,21 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           right: 0,
           bottom: 0,
           cursor: "move",
-          touchAction: "none",
         }}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const startX = e.clientX;
-          const startY = e.clientY;
+        onMouseDown={(e) => {
+          const startX = e.clientX || (e.touches && e.touches[0].clientX);
+          const startY = e.clientY || (e.touches && e.touches[0].clientY);
           const startCrop = { ...cropRect };
 
-          const handlePointerMove = (moveEvent) => {
-            moveEvent.preventDefault();
-            const moveX = moveEvent.clientX;
-            const moveY = moveEvent.clientY;
-            const deltaX = (moveX - startX) * scale;
-            const deltaY = (moveY - startY) * scale;
+          const handleMouseMove = (moveEvent) => {
+            const moveX =
+              moveEvent.clientX ||
+              (moveEvent.touches && moveEvent.touches[0].clientX);
+            const moveY =
+              moveEvent.clientY ||
+              (moveEvent.touches && moveEvent.touches[0].clientY);
+            const deltaX = (moveX - startX) / scale;
+            const deltaY = (moveY - startY) / scale;
 
             setCropRect({
               x: Math.max(
@@ -1594,13 +1414,19 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             });
           };
 
-          const handlePointerUp = () => {
-            document.removeEventListener("pointermove", handlePointerMove);
-            document.removeEventListener("pointerup", handlePointerUp);
+          const handleMouseUp = () => {
+            document.removeEventListener("mousemove", handleMouseMove);
+            document.removeEventListener("touchmove", handleMouseMove);
+            document.removeEventListener("mouseup", handleMouseUp);
+            document.removeEventListener("touchend", handleMouseUp);
           };
 
-          document.addEventListener("pointermove", handlePointerMove);
-          document.addEventListener("pointerup", handlePointerUp);
+          document.addEventListener("mousemove", handleMouseMove);
+          document.addEventListener("touchmove", handleMouseMove, {
+            passive: false,
+          });
+          document.addEventListener("mouseup", handleMouseUp);
+          document.addEventListener("touchend", handleMouseUp);
         }}
       >
         <div
@@ -1634,7 +1460,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               backgroundColor: "white",
               border: "2px solid #10b981",
               borderRadius: "4px",
-              touchAction: "none",
             };
 
             if (corner === "nw") {
@@ -1659,19 +1484,23 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               <div
                 key={corner}
                 style={style}
-                onPointerDown={(e) => {
+                onMouseDown={(e) => {
                   e.stopPropagation();
-                  e.preventDefault();
-                  const startX = e.clientX;
-                  const startY = e.clientY;
+                  const startX =
+                    e.clientX || (e.touches && e.touches[0].clientX);
+                  const startY =
+                    e.clientY || (e.touches && e.touches[0].clientY);
                   const startCrop = { ...cropRect };
 
-                  const handlePointerMove = (moveEvent) => {
-                    moveEvent.preventDefault();
-                    const moveX = moveEvent.clientX;
-                    const moveY = moveEvent.clientY;
-                    const deltaX = (moveX - startX) * scale;
-                    const deltaY = (moveY - startY) * scale;
+                  const handleMouseMove = (moveEvent) => {
+                    const moveX =
+                      moveEvent.clientX ||
+                      (moveEvent.touches && moveEvent.touches[0].clientX);
+                    const moveY =
+                      moveEvent.clientY ||
+                      (moveEvent.touches && moveEvent.touches[0].clientY);
+                    const deltaX = (moveX - startX) / scale;
+                    const deltaY = (moveY - startY) / scale;
 
                     let newWidth = startCrop.width;
                     let newHeight = startCrop.height;
@@ -1710,13 +1539,19 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     });
                   };
 
-                  const handlePointerUp = () => {
-                    document.removeEventListener("pointermove", handlePointerMove);
-                    document.removeEventListener("pointerup", handlePointerUp);
+                  const handleMouseUp = () => {
+                    document.removeEventListener("mousemove", handleMouseMove);
+                    document.removeEventListener("touchmove", handleMouseMove);
+                    document.removeEventListener("mouseup", handleMouseUp);
+                    document.removeEventListener("touchend", handleMouseUp);
                   };
 
-                  document.addEventListener("pointermove", handlePointerMove);
-                  document.addEventListener("pointerup", handlePointerUp);
+                  document.addEventListener("mousemove", handleMouseMove);
+                  document.addEventListener("touchmove", handleMouseMove, {
+                    passive: false,
+                  });
+                  document.addEventListener("mouseup", handleMouseUp);
+                  document.addEventListener("touchend", handleMouseUp);
                 }}
               />
             );
@@ -1747,10 +1582,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     setIsOverDeleteZone(false);
     setCameraError(null);
     setProcessingImage(false);
-    setIsPointerDown(false);
-    setCurrentPointerId(null);
-    setDrawingScale(1);
-    setDrawingOffset({ x: 0, y: 0 });
     
     stopCamera();
   };
@@ -1770,17 +1601,15 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         alignItems: "center",
         justifyContent: "center",
         zIndex: 20000,
-        overflow: "hidden",
-        touchAction: "none",
       }}
-      onClick={(e) => {
-        if (!isCropping && !textPosition && !processingImage && e.target === e.currentTarget) {
+      onClick={() => {
+        if (!isCropping && !textPosition && !processingImage) {
           resetStates();
           onClose();
         }
       }}
     >
-      {/* Hidden file inputs */}
+      {/* Hidden file inputs for Android native camera */}
       <input
         ref={photoInputRef}
         type="file"
@@ -1803,13 +1632,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           backgroundColor: "#1f2937",
           borderRadius: "0.75rem",
           maxHeight: "95vh",
-          overflow: "hidden",
+          overflow: "auto",
           width: "95vw",
           maxWidth: "800px",
           zIndex: 20001,
-          display: "flex",
-          flexDirection: "column",
-          touchAction: "none",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1821,7 +1647,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             alignItems: "center",
             padding: "1rem",
             borderBottom: "1px solid #374151",
-            flexShrink: 0,
           }}
         >
           <h3
@@ -1885,12 +1710,9 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         <div
           style={{
             padding: "1rem",
-            flex: 1,
+            minHeight: "400px",
             display: "flex",
             flexDirection: "column",
-            overflow: "hidden",
-            minHeight: 0,
-            touchAction: "none",
           }}
         >
           {processingImage ? (
@@ -1901,7 +1723,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 overflow: "hidden",
                 backgroundColor: "#000",
                 marginBottom: "1rem",
-                flex: 1,
+                minHeight: "300px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1932,25 +1754,16 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               style={{
                 position: "relative",
                 width: "100%",
-                flex: 1,
+                height: "50vh",
+                minHeight: "300px",
                 borderRadius: "8px",
                 overflow: "hidden",
                 backgroundColor: "#000",
                 marginBottom: "1rem",
-                minHeight: 0,
-                touchAction: editorMode === "draw" ? "none" : "auto",
               }}
-              // Unified pointer events for PWA
-              onPointerDown={editorMode === "draw" ? handlePointerDown : undefined}
-              onPointerMove={editorMode === "draw" ? handlePointerMove : undefined}
-              onPointerUp={editorMode === "draw" ? handlePointerUp : undefined}
-              onPointerCancel={editorMode === "draw" ? handlePointerCancel : undefined}
-              onPointerLeave={editorMode === "draw" ? handlePointerCancel : undefined}
-              // Touch fallbacks for older browsers
-              onTouchStart={editorMode === "draw" ? handleTouchStart : undefined}
-              onTouchMove={editorMode === "draw" ? handleTouchMove : undefined}
-              onTouchEnd={editorMode === "draw" ? handleTouchEnd : undefined}
-              onTouchCancel={editorMode === "draw" ? handlePointerCancel : undefined}
+              onMouseDown={editorMode === "draw" ? handleMouseDown : undefined}
+              onMouseMove={editorMode === "draw" ? handleMouseMove : undefined}
+              onMouseUp={editorMode === "draw" ? handleMouseUp : undefined}
               onClick={editorMode === "draw" && drawTool === "text" ? (e) => {
                 const coords = getCanvasCoordinates(e);
                 setTextPosition(coords);
@@ -2015,10 +1828,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     width: "100%",
                     height: "100%",
                     cursor: drawTool === "text" ? "text" : "crosshair",
-                    touchAction: "none",
-                    userSelect: "none",
-                    WebkitUserSelect: "none",
-                    msUserSelect: "none",
                   }}
                 />
               )}
@@ -2121,7 +1930,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 overflow: "hidden",
                 backgroundColor: "#000",
                 marginBottom: "1rem",
-                flex: 1,
+                minHeight: "300px",
               }}
             >
               <video
@@ -2129,7 +1938,8 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 controls
                 style={{
                   width: "100%",
-                  height: "100%",
+                  height: "auto",
+                  maxHeight: "50vh",
                   objectFit: "contain",
                   display: "block",
                 }}
@@ -2143,7 +1953,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 overflow: "hidden",
                 backgroundColor: "#000",
                 marginBottom: "1rem",
-                flex: 1,
+                minHeight: "300px",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
@@ -2160,11 +1970,11 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               >
                 <MdCamera size={48} style={{ marginBottom: "1rem" }} />
                 <h3 style={{ marginBottom: "0.5rem" }}>
-                  {isMobile() ? "Device Camera" : "Camera Access"}
+                  {isAndroid() ? "Android Camera" : "Camera Access"}
                 </h3>
                 <p style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
-                  {isMobile() && isPWA()
-                    ? "Using device's native camera for best compatibility"
+                  {isAndroid() && isPWA()
+                    ? "Using Android's native camera for best compatibility"
                     : "Take a photo using your device's camera"}
                 </p>
               </div>
@@ -2295,8 +2105,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 overflow: "hidden",
                 backgroundColor: "#000",
                 marginBottom: "1rem",
-                flex: 1,
-                minHeight: 0,
+                minHeight: "300px",
               }}
             >
               {cameraError && (
@@ -2326,7 +2135,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     {cameraError}
                   </p>
 
-                  {isMobile() && (
+                  {isAndroid() && (
                     <div
                       style={{
                         display: "flex",
@@ -2381,7 +2190,8 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 muted={mode === "video"}
                 style={{
                   width: "100%",
-                  height: "100%",
+                  height: "auto",
+                  maxHeight: "50vh",
                   objectFit: "contain",
                   display: "block",
                   transform: cameraType === "user" ? "scaleX(-1)" : "none",
@@ -2516,9 +2326,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               padding: "1rem",
               borderTop: "1px solid #374151",
               backgroundColor: "#111827",
-              flexShrink: 0,
-              overflow: "auto",
-              maxHeight: "40vh",
             }}
           >
             <div
@@ -2947,7 +2754,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             style={{
               padding: "1rem",
               borderTop: "1px solid #374151",
-              flexShrink: 0,
             }}
           >
             <div
@@ -2988,7 +2794,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             style={{
               padding: "1rem",
               borderTop: "1px solid #374151",
-              flexShrink: 0,
             }}
           >
             <div
@@ -3029,7 +2834,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             style={{
               padding: "1rem",
               borderTop: "1px solid #374151",
-              flexShrink: 0,
             }}
           >
             <button
@@ -3056,25 +2860,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
-        }
-        
-        input[type="range"]::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          appearance: none;
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: #10b981;
-          cursor: pointer;
-        }
-        
-        input[type="range"]::-moz-range-thumb {
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: #10b981;
-          cursor: pointer;
-          border: none;
         }
       `}</style>
     </div>
