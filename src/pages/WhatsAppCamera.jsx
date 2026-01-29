@@ -461,7 +461,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const [cameraType, setCameraType] = useState("environment");
   const [processingImage, setProcessingImage] = useState(false);
   const [cameraAccessMethod, setCameraAccessMethod] = useState("direct");
-  const [touchStartPos, setTouchStartPos] = useState({ x: 0, y: 0 });
+  const [isPointerDown, setIsPointerDown] = useState(false);
+  const [currentPointerId, setCurrentPointerId] = useState(null);
+  const [drawingScale, setDrawingScale] = useState(1);
+  const [drawingOffset, setDrawingOffset] = useState({ x: 0, y: 0 });
 
   // Check if mobile device
   const isMobile = () => {
@@ -478,24 +481,53 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
            document.referrer.includes('android-app://');
   };
 
+  // Initialize low-latency canvas context
+  const getDrawingContext = useCallback(() => {
+    if (!drawingCanvasRef.current) return null;
+    
+    try {
+      // Try to get desynchronized context for better performance
+      const ctx = drawingCanvasRef.current.getContext('2d', { 
+        desynchronized: true,
+        alpha: true 
+      });
+      return ctx;
+    } catch (e) {
+      // Fallback to regular context
+      return drawingCanvasRef.current.getContext('2d');
+    }
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
+      // Prevent all scrolling when modal is open
       document.body.style.overflow = "hidden";
+      document.body.style.position = "fixed";
+      document.body.style.width = "100%";
+      document.body.style.height = "100%";
       document.documentElement.style.overflow = "hidden";
-      document.body.style.touchAction = "none";
+      document.documentElement.style.touchAction = "none";
+      
       if (isMobile()) {
         setCameraAccessMethod("native");
       }
     } else {
+      // Restore scrolling when modal closes
       document.body.style.overflow = "auto";
+      document.body.style.position = "";
+      document.body.style.width = "";
+      document.body.style.height = "";
       document.documentElement.style.overflow = "auto";
-      document.body.style.touchAction = "auto";
+      document.documentElement.style.touchAction = "auto";
     }
 
     return () => {
       document.body.style.overflow = "auto";
+      document.body.style.position = "";
+      document.body.style.width = "";
+      document.body.style.height = "";
       document.documentElement.style.overflow = "auto";
-      document.body.style.touchAction = "auto";
+      document.documentElement.style.touchAction = "auto";
       stopCamera();
     };
   }, [isOpen]);
@@ -524,6 +556,41 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       });
     }
   }, [isCropping, imageToEdit, imageDimensions]);
+
+  // Calculate drawing scale and offset when image loads
+  useEffect(() => {
+    if (!containerRef.current || !imageDimensions.width || !imageDimensions.height) return;
+
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    
+    // Calculate how the image is displayed within the container
+    const containerAspect = containerRect.width / containerRect.height;
+    const imageAspect = imageDimensions.width / imageDimensions.height;
+    
+    let displayWidth, displayHeight, offsetX, offsetY;
+    
+    if (containerAspect > imageAspect) {
+      // Container is wider than image (letterboxing on sides)
+      displayHeight = containerRect.height;
+      displayWidth = imageAspect * displayHeight;
+      offsetX = (containerRect.width - displayWidth) / 2;
+      offsetY = 0;
+    } else {
+      // Container is taller than image (letterboxing top/bottom)
+      displayWidth = containerRect.width;
+      displayHeight = displayWidth / imageAspect;
+      offsetX = 0;
+      offsetY = (containerRect.height - displayHeight) / 2;
+    }
+    
+    // Calculate scale from display size to actual image size
+    const scale = imageDimensions.width / displayWidth;
+    
+    setDrawingScale(scale);
+    setDrawingOffset({ x: offsetX, y: offsetY });
+    
+  }, [imageDimensions, containerRef.current]);
 
   const initializeCamera = async () => {
     try {
@@ -847,60 +914,68 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     }
   };
 
-  // Fixed getCanvasCoordinates function for mobile
-  const getCanvasCoordinates = (event) => {
-    if (!containerRef.current) return { x: 0, y: 0 };
+  // FIXED: Unified pointer event handling for PWA
+  const getCanvasCoordinates = useCallback((event) => {
+    if (!containerRef.current || !imageDimensions.width || !imageDimensions.height) {
+      return { x: 0, y: 0 };
+    }
 
     const container = containerRef.current;
     const rect = container.getBoundingClientRect();
     
-    // Get touch or mouse coordinates
+    // Get coordinates from pointer event
     let clientX, clientY;
-    if (event.touches && event.touches.length > 0) {
-      clientX = event.touches[0].clientX;
-      clientY = event.touches[0].clientY;
+    if (event.type.includes('touch')) {
+      // Touch event
+      if (event.touches && event.touches.length > 0) {
+        clientX = event.touches[0].clientX;
+        clientY = event.touches[0].clientY;
+      } else if (event.changedTouches && event.changedTouches.length > 0) {
+        clientX = event.changedTouches[0].clientX;
+        clientY = event.changedTouches[0].clientY;
+      }
     } else {
+      // Mouse/Pointer event
       clientX = event.clientX;
       clientY = event.clientY;
     }
 
-    // Calculate image display dimensions and position
-    const containerWidth = rect.width;
-    const containerHeight = rect.height;
-    const imageRatio = imageDimensions.width / imageDimensions.height;
-    
-    let displayWidth, displayHeight, offsetX, offsetY;
-    
-    if (containerWidth / containerHeight > imageRatio) {
-      displayHeight = containerHeight;
-      displayWidth = containerHeight * imageRatio;
-      offsetX = (containerWidth - displayWidth) / 2;
-      offsetY = 0;
-    } else {
-      displayWidth = containerWidth;
-      displayHeight = containerWidth / imageRatio;
-      offsetX = 0;
-      offsetY = (containerHeight - displayHeight) / 2;
-    }
+    // Calculate relative position within container
+    const relativeX = clientX - rect.left;
+    const relativeY = clientY - rect.top;
 
-    // Convert screen coordinates to image coordinates
-    const scale = imageDimensions.width / displayWidth;
-    const x = (clientX - rect.left - offsetX) * scale;
-    const y = (clientY - rect.top - offsetY) * scale;
+    // Apply drawing offset and scale to convert to image coordinates
+    const imageX = (relativeX - drawingOffset.x) * drawingScale;
+    const imageY = (relativeY - drawingOffset.y) * drawingScale;
 
+    // Clamp to image bounds
     return {
-      x: Math.max(0, Math.min(imageDimensions.width, x)),
-      y: Math.max(0, Math.min(imageDimensions.height, y))
+      x: Math.max(0, Math.min(imageDimensions.width, imageX)),
+      y: Math.max(0, Math.min(imageDimensions.height, imageY))
     };
-  };
+  }, [imageDimensions, drawingOffset, drawingScale]);
 
-  const handleTouchStart = (e) => {
+  // Unified pointer down handler
+  const handlePointerDown = useCallback((e) => {
     if (editorMode !== "draw") return;
+    
+    // Prevent default to stop scrolling/zooming in PWA
     e.preventDefault();
+    e.stopPropagation();
+    
+    // Set pointer capture for consistent tracking
+    if (containerRef.current && e.pointerId) {
+      containerRef.current.setPointerCapture(e.pointerId);
+      setCurrentPointerId(e.pointerId);
+    }
+    
+    setIsPointerDown(true);
     
     const coords = getCanvasCoordinates(e);
+    
+    // Check if user clicked on existing element
     const clickedElement = findElementAtPosition(coords.x, coords.y);
-
+    
     if (clickedElement) {
       setSelectedElement(clickedElement);
       const offsetX = coords.x - clickedElement.x;
@@ -908,17 +983,16 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       setDragOffset({ x: offsetX, y: offsetY });
       setIsDraggingElement(true);
       setShowDeleteZone(true);
-      setTouchStartPos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
       return;
     }
-
+    
     setSelectedElement(null);
-
+    
     if (drawTool === "text") {
       setTextPosition(coords);
       return;
     }
-
+    
     setIsDrawing(true);
     
     if (drawTool === "pen") {
@@ -938,33 +1012,38 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         height: 0,
       });
     }
-  };
+  }, [editorMode, drawTool, drawColor, getCanvasCoordinates]);
 
-  const handleTouchMove = (e) => {
-    if (editorMode !== "draw") return;
+  // Unified pointer move handler
+  const handlePointerMove = useCallback((e) => {
+    if (editorMode !== "draw" || !isPointerDown) return;
+    
     e.preventDefault();
+    e.stopPropagation();
     
     const coords = getCanvasCoordinates(e);
-
+    
     if (isDraggingElement && selectedElement) {
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const deleteZoneTop = 50;
-      const touchY = e.touches[0].clientY;
-      const isOverDelete = touchY - containerRect.top < deleteZoneTop;
-      setIsOverDeleteZone(isOverDelete);
-
+      // Handle element dragging
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      if (containerRect) {
+        const deleteZoneTop = 50;
+        const isOverDelete = e.clientY - containerRect.top < deleteZoneTop;
+        setIsOverDeleteZone(isOverDelete);
+      }
+      
       const newX = coords.x - dragOffset.x;
       const newY = coords.y - dragOffset.y;
-
+      
       const updatedElements = elements.map((el) =>
         el.id === selectedElement.id ? { ...el, x: newX, y: newY } : el,
       );
       setElements(updatedElements);
       return;
     }
-
-    if (!isDrawing) return;
-
+    
+    if (!isDrawing || !tempElement) return;
+    
     if (drawTool === "pen") {
       setTempElement((prev) => ({
         ...prev,
@@ -977,156 +1056,91 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         height: coords.y - prev.y,
       }));
     }
-  };
-
-  const handleTouchEnd = (e) => {
-    if (isDraggingElement && selectedElement) {
-      if (isOverDeleteZone) {
-        deleteElement(selectedElement);
-      }
-
-      setIsDraggingElement(false);
-      setIsOverDeleteZone(false);
-      setShowDeleteZone(false);
-      saveDrawingState();
-      return;
-    }
-
-    if (!isDrawing || !tempElement) return;
-
-    if (drawTool === "pen" && tempElement.points.length < 2) {
-      setIsDrawing(false);
-      setTempElement(null);
-      return;
-    }
-
-    const newElement = {
-      ...tempElement,
-      id: Date.now() + Math.random(),
-    };
-
-    setElements([...elements, newElement]);
-    saveDrawingState();
-
-    setIsDrawing(false);
-    setTempElement(null);
-  };
-
-  const handleMouseDown = (e) => {
-    if (editorMode !== "draw" || isMobile()) return;
     
-    const coords = getCanvasCoordinates(e);
-    const clickedElement = findElementAtPosition(coords.x, coords.y);
+    // Force immediate render for smooth drawing
+    renderDrawing();
+  }, [editorMode, isPointerDown, isDraggingElement, selectedElement, isDrawing, tempElement, drawTool, elements, dragOffset, getCanvasCoordinates]);
 
-    if (clickedElement) {
-      setSelectedElement(clickedElement);
-      const offsetX = coords.x - clickedElement.x;
-      const offsetY = coords.y - clickedElement.y;
-      setDragOffset({ x: offsetX, y: offsetY });
-      setIsDraggingElement(true);
-      setShowDeleteZone(true);
-      return;
-    }
-
-    setSelectedElement(null);
-
-    if (drawTool === "text") {
-      setTextPosition(coords);
-      return;
-    }
-
-    setIsDrawing(true);
+  // Unified pointer up handler
+  const handlePointerUp = useCallback((e) => {
+    if (editorMode !== "draw") return;
     
-    if (drawTool === "pen") {
-      setTempElement({
-        type: "pen",
-        color: drawColor,
-        points: [coords],
-        width: 3,
-      });
-    } else {
-      setTempElement({
-        type: drawTool,
-        color: drawColor,
-        x: coords.x,
-        y: coords.y,
-        width: 0,
-        height: 0,
-      });
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Release pointer capture
+    if (containerRef.current && currentPointerId) {
+      containerRef.current.releasePointerCapture(currentPointerId);
+      setCurrentPointerId(null);
     }
-  };
-
-  const handleMouseMove = (e) => {
-    if (editorMode !== "draw" || isMobile()) return;
-
-    const coords = getCanvasCoordinates(e);
-
-    if (isDraggingElement && selectedElement) {
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const deleteZoneTop = 50;
-      const isOverDelete = e.clientY - containerRect.top < deleteZoneTop;
-      setIsOverDeleteZone(isOverDelete);
-
-      const newX = coords.x - dragOffset.x;
-      const newY = coords.y - dragOffset.y;
-
-      const updatedElements = elements.map((el) =>
-        el.id === selectedElement.id ? { ...el, x: newX, y: newY } : el,
-      );
-      setElements(updatedElements);
-      return;
-    }
-
-    if (!isDrawing) return;
-
-    if (drawTool === "pen") {
-      setTempElement((prev) => ({
-        ...prev,
-        points: [...prev.points, coords],
-      }));
-    } else {
-      setTempElement((prev) => ({
-        ...prev,
-        width: coords.x - prev.x,
-        height: coords.y - prev.y,
-      }));
-    }
-  };
-
-  const handleMouseUp = () => {
-    if (isMobile()) return;
     
     if (isDraggingElement && selectedElement) {
       if (isOverDeleteZone) {
         deleteElement(selectedElement);
       }
-
+      
       setIsDraggingElement(false);
       setIsOverDeleteZone(false);
       setShowDeleteZone(false);
       saveDrawingState();
+      setIsPointerDown(false);
       return;
     }
-
-    if (!isDrawing || !tempElement) return;
-
+    
+    if (!isDrawing || !tempElement) {
+      setIsPointerDown(false);
+      return;
+    }
+    
     if (drawTool === "pen" && tempElement.points.length < 2) {
       setIsDrawing(false);
       setTempElement(null);
+      setIsPointerDown(false);
       return;
     }
-
+    
     const newElement = {
       ...tempElement,
       id: Date.now() + Math.random(),
     };
-
+    
     setElements([...elements, newElement]);
     saveDrawingState();
-
+    
     setIsDrawing(false);
     setTempElement(null);
-  };
+    setIsPointerDown(false);
+  }, [editorMode, isDraggingElement, selectedElement, isDrawing, tempElement, drawTool, elements, currentPointerId, isOverDeleteZone]);
+
+  // Handle pointer leave/cancel
+  const handlePointerCancel = useCallback((e) => {
+    if (editorMode !== "draw") return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (currentPointerId && containerRef.current) {
+      containerRef.current.releasePointerCapture(currentPointerId);
+    }
+    
+    setIsPointerDown(false);
+    setIsDraggingElement(false);
+    setIsDrawing(false);
+    setTempElement(null);
+  }, [editorMode, currentPointerId]);
+
+  // Touch-specific handlers as fallback
+  const handleTouchStart = useCallback((e) => {
+    handlePointerDown(e);
+  }, [handlePointerDown]);
+
+  const handleTouchMove = useCallback((e) => {
+    handlePointerMove(e);
+  }, [handlePointerMove]);
+
+  const handleTouchEnd = useCallback((e) => {
+    handlePointerUp(e);
+  }, [handlePointerUp]);
 
   const findElementAtPosition = (x, y) => {
     for (const element of elements) {
@@ -1243,6 +1257,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     if (historyStep > 0) {
       setHistoryStep(historyStep - 1);
       setElements(drawHistory[historyStep - 1].elements);
+      renderDrawing();
     }
   };
 
@@ -1250,6 +1265,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     if (historyStep < drawHistory.length - 1) {
       setHistoryStep(historyStep + 1);
       setElements(drawHistory[historyStep + 1].elements);
+      renderDrawing();
     }
   };
 
@@ -1258,6 +1274,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     setElements(newElements);
     setSelectedElement(null);
     saveDrawingState();
+    renderDrawing();
   };
 
   const getElementBounds = (element) => {
@@ -1312,14 +1329,21 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     ctx.strokeStyle = element.color;
     ctx.fillStyle = element.color;
     ctx.lineWidth = element.type === "pen" ? element.width : 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
 
     if (element.type === "pen") {
       ctx.beginPath();
-      ctx.moveTo(element.points[0].x, element.points[0].y);
-      element.points.forEach((point) => {
-        ctx.lineTo(point.x, point.y);
-      });
-      ctx.stroke();
+      if (element.points.length === 1) {
+        ctx.arc(element.points[0].x, element.points[0].y, element.width / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.moveTo(element.points[0].x, element.points[0].y);
+        for (let i = 1; i < element.points.length; i++) {
+          ctx.lineTo(element.points[i].x, element.points[i].y);
+        }
+        ctx.stroke();
+      }
     } else if (element.type === "arrow") {
       const fromX = element.x;
       const fromY = element.y;
@@ -1379,15 +1403,17 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const renderDrawing = () => {
     if (!drawingCanvasRef.current || !imageDimensions.width) return;
 
-    const canvas = drawingCanvasRef.current;
-    const ctx = canvas.getContext("2d");
+    const ctx = getDrawingContext();
+    if (!ctx) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
 
+    // Draw all elements
     elements.forEach((element) => {
       drawElement(ctx, element, selectedElement?.id === element.id);
     });
 
+    // Draw temporary element (currently being drawn)
     if (tempElement) {
       drawElement(ctx, tempElement);
     }
@@ -1395,7 +1421,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
   useEffect(() => {
     renderDrawing();
-  }, [elements, tempElement, selectedElement, imageDimensions]);
+  }, [elements, tempElement, selectedElement, imageDimensions, getDrawingContext]);
 
   useEffect(() => {
     if (imageToEdit && editorMode === "draw" && drawingCanvasRef.current) {
@@ -1411,7 +1437,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       };
       img.src = imageToEdit;
     }
-  }, [imageToEdit, editorMode]);
+  }, [imageToEdit, editorMode, getDrawingContext]);
 
   const handleSaveImage = async () => {
     if (!imageToEdit && !preview) return;
@@ -1456,7 +1482,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         
         if (editorMode === 'draw' && drawingCanvasRef.current) {
           const drawCanvas = drawingCanvasRef.current;
-          const drawCtx = drawCanvas.getContext('2d');
           const tempCanvas = document.createElement('canvas');
           const tempCtx = tempCanvas.getContext('2d');
           tempCanvas.width = drawCanvas.width;
@@ -1500,23 +1525,21 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
     const rect = containerRef.current.getBoundingClientRect();
     
-    // Calculate image display dimensions and position
-    const containerWidth = rect.width;
-    const containerHeight = rect.height;
-    const imageRatio = imageDimensions.width / imageDimensions.height;
+    const containerAspect = rect.width / rect.height;
+    const imageAspect = imageDimensions.width / imageDimensions.height;
     
     let displayWidth, displayHeight, offsetX, offsetY;
     
-    if (containerWidth / containerHeight > imageRatio) {
-      displayHeight = containerHeight;
-      displayWidth = containerHeight * imageRatio;
-      offsetX = (containerWidth - displayWidth) / 2;
+    if (containerAspect > imageAspect) {
+      displayHeight = rect.height;
+      displayWidth = imageAspect * displayHeight;
+      offsetX = (rect.width - displayWidth) / 2;
       offsetY = 0;
     } else {
-      displayWidth = containerWidth;
-      displayHeight = containerWidth / imageRatio;
+      displayWidth = rect.width;
+      displayHeight = displayWidth / imageAspect;
       offsetX = 0;
-      offsetY = (containerHeight - displayHeight) / 2;
+      offsetY = (rect.height - displayHeight) / 2;
     }
 
     const scale = imageDimensions.width / displayWidth;
@@ -1537,13 +1560,15 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           cursor: "move",
           touchAction: "none",
         }}
-        onMouseDown={(e) => {
-          if (isMobile()) return;
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
           const startX = e.clientX;
           const startY = e.clientY;
           const startCrop = { ...cropRect };
 
-          const handleMouseMove = (moveEvent) => {
+          const handlePointerMove = (moveEvent) => {
+            moveEvent.preventDefault();
             const moveX = moveEvent.clientX;
             const moveY = moveEvent.clientY;
             const deltaX = (moveX - startX) * scale;
@@ -1569,56 +1594,13 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             });
           };
 
-          const handleMouseUp = () => {
-            document.removeEventListener("mousemove", handleMouseMove);
-            document.removeEventListener("mouseup", handleMouseUp);
+          const handlePointerUp = () => {
+            document.removeEventListener("pointermove", handlePointerMove);
+            document.removeEventListener("pointerup", handlePointerUp);
           };
 
-          document.addEventListener("mousemove", handleMouseMove);
-          document.addEventListener("mouseup", handleMouseUp);
-        }}
-        onTouchStart={(e) => {
-          e.preventDefault();
-          const touch = e.touches[0];
-          const startX = touch.clientX;
-          const startY = touch.clientY;
-          const startCrop = { ...cropRect };
-
-          const handleTouchMove = (moveEvent) => {
-            moveEvent.preventDefault();
-            const touch = moveEvent.touches[0];
-            const moveX = touch.clientX;
-            const moveY = touch.clientY;
-            const deltaX = (moveX - startX) * scale;
-            const deltaY = (moveY - startY) * scale;
-
-            setCropRect({
-              x: Math.max(
-                0,
-                Math.min(
-                  imageDimensions.width - startCrop.width,
-                  startCrop.x + deltaX,
-                ),
-              ),
-              y: Math.max(
-                0,
-                Math.min(
-                  imageDimensions.height - startCrop.height,
-                  startCrop.y + deltaY,
-                ),
-              ),
-              width: startCrop.width,
-              height: startCrop.height,
-            });
-          };
-
-          const handleTouchEnd = () => {
-            document.removeEventListener("touchmove", handleTouchMove);
-            document.removeEventListener("touchend", handleTouchEnd);
-          };
-
-          document.addEventListener("touchmove", handleTouchMove, { passive: false });
-          document.addEventListener("touchend", handleTouchEnd);
+          document.addEventListener("pointermove", handlePointerMove);
+          document.addEventListener("pointerup", handlePointerUp);
         }}
       >
         <div
@@ -1677,14 +1659,15 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               <div
                 key={corner}
                 style={style}
-                onMouseDown={(e) => {
-                  if (isMobile()) return;
+                onPointerDown={(e) => {
                   e.stopPropagation();
+                  e.preventDefault();
                   const startX = e.clientX;
                   const startY = e.clientY;
                   const startCrop = { ...cropRect };
 
-                  const handleMouseMove = (moveEvent) => {
+                  const handlePointerMove = (moveEvent) => {
+                    moveEvent.preventDefault();
                     const moveX = moveEvent.clientX;
                     const moveY = moveEvent.clientY;
                     const deltaX = (moveX - startX) * scale;
@@ -1727,73 +1710,13 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     });
                   };
 
-                  const handleMouseUp = () => {
-                    document.removeEventListener("mousemove", handleMouseMove);
-                    document.removeEventListener("mouseup", handleMouseUp);
+                  const handlePointerUp = () => {
+                    document.removeEventListener("pointermove", handlePointerMove);
+                    document.removeEventListener("pointerup", handlePointerUp);
                   };
 
-                  document.addEventListener("mousemove", handleMouseMove);
-                  document.addEventListener("mouseup", handleMouseUp);
-                }}
-                onTouchStart={(e) => {
-                  e.stopPropagation();
-                  const touch = e.touches[0];
-                  const startX = touch.clientX;
-                  const startY = touch.clientY;
-                  const startCrop = { ...cropRect };
-
-                  const handleTouchMove = (moveEvent) => {
-                    moveEvent.preventDefault();
-                    const touch = moveEvent.touches[0];
-                    const moveX = touch.clientX;
-                    const moveY = touch.clientY;
-                    const deltaX = (moveX - startX) * scale;
-                    const deltaY = (moveY - startY) * scale;
-
-                    let newWidth = startCrop.width;
-                    let newHeight = startCrop.height;
-                    let newX = startCrop.x;
-                    let newY = startCrop.y;
-
-                    if (corner === "nw") {
-                      newWidth = Math.max(100, startCrop.width - deltaX);
-                      newHeight = Math.max(100, startCrop.height - deltaY);
-                      newX = startCrop.x + deltaX;
-                      newY = startCrop.y + deltaY;
-                    } else if (corner === "ne") {
-                      newWidth = Math.max(100, startCrop.width + deltaX);
-                      newHeight = Math.max(100, startCrop.height - deltaY);
-                      newY = startCrop.y + deltaY;
-                    } else if (corner === "sw") {
-                      newWidth = Math.max(100, startCrop.width - deltaX);
-                      newHeight = Math.max(100, startCrop.height + deltaY);
-                      newX = startCrop.x + deltaX;
-                    } else if (corner === "se") {
-                      newWidth = Math.max(100, startCrop.width + deltaX);
-                      newHeight = Math.max(100, startCrop.height + deltaY);
-                    }
-
-                    setCropRect({
-                      x: Math.max(
-                        0,
-                        Math.min(imageDimensions.width - newWidth, newX),
-                      ),
-                      y: Math.max(
-                        0,
-                        Math.min(imageDimensions.height - newHeight, newY),
-                      ),
-                      width: newWidth,
-                      height: newHeight,
-                    });
-                  };
-
-                  const handleTouchEnd = () => {
-                    document.removeEventListener("touchmove", handleTouchMove);
-                    document.removeEventListener("touchend", handleTouchEnd);
-                  };
-
-                  document.addEventListener("touchmove", handleTouchMove, { passive: false });
-                  document.addEventListener("touchend", handleTouchEnd);
+                  document.addEventListener("pointermove", handlePointerMove);
+                  document.addEventListener("pointerup", handlePointerUp);
                 }}
               />
             );
@@ -1824,6 +1747,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     setIsOverDeleteZone(false);
     setCameraError(null);
     setProcessingImage(false);
+    setIsPointerDown(false);
+    setCurrentPointerId(null);
+    setDrawingScale(1);
+    setDrawingOffset({ x: 0, y: 0 });
     
     stopCamera();
   };
@@ -1963,6 +1890,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             flexDirection: "column",
             overflow: "hidden",
             minHeight: 0,
+            touchAction: "none",
           }}
         >
           {processingImage ? (
@@ -2012,12 +1940,17 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 minHeight: 0,
                 touchAction: editorMode === "draw" ? "none" : "auto",
               }}
-              onMouseDown={editorMode === "draw" && !isMobile() ? handleMouseDown : undefined}
-              onMouseMove={editorMode === "draw" && !isMobile() ? handleMouseMove : undefined}
-              onMouseUp={editorMode === "draw" && !isMobile() ? handleMouseUp : undefined}
-              onTouchStart={editorMode === "draw" && isMobile() ? handleTouchStart : undefined}
-              onTouchMove={editorMode === "draw" && isMobile() ? handleTouchMove : undefined}
-              onTouchEnd={editorMode === "draw" && isMobile() ? handleTouchEnd : undefined}
+              // Unified pointer events for PWA
+              onPointerDown={editorMode === "draw" ? handlePointerDown : undefined}
+              onPointerMove={editorMode === "draw" ? handlePointerMove : undefined}
+              onPointerUp={editorMode === "draw" ? handlePointerUp : undefined}
+              onPointerCancel={editorMode === "draw" ? handlePointerCancel : undefined}
+              onPointerLeave={editorMode === "draw" ? handlePointerCancel : undefined}
+              // Touch fallbacks for older browsers
+              onTouchStart={editorMode === "draw" ? handleTouchStart : undefined}
+              onTouchMove={editorMode === "draw" ? handleTouchMove : undefined}
+              onTouchEnd={editorMode === "draw" ? handleTouchEnd : undefined}
+              onTouchCancel={editorMode === "draw" ? handlePointerCancel : undefined}
               onClick={editorMode === "draw" && drawTool === "text" ? (e) => {
                 const coords = getCanvasCoordinates(e);
                 setTextPosition(coords);
@@ -2083,6 +2016,9 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     height: "100%",
                     cursor: drawTool === "text" ? "text" : "crosshair",
                     touchAction: "none",
+                    userSelect: "none",
+                    WebkitUserSelect: "none",
+                    msUserSelect: "none",
                   }}
                 />
               )}
