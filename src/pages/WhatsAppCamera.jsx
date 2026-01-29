@@ -6,17 +6,10 @@ import {
   MdVideocam,
   MdStop,
   MdPlayArrow,
-  MdCheck,
   MdCrop,
-  MdZoomIn,
-  MdZoomOut,
   MdRotateRight,
   MdRotateLeft,
   MdTextFields,
-  MdOutlineSquare,
-  MdOutlineCircle,
-  MdArrowRightAlt,
-  MdOutlineHorizontalRule,
   MdClose,
   MdUndo,
   MdRedo,
@@ -416,14 +409,16 @@ export default function WhatsAppCamera() {
   );
 }
 
-// CameraModal Component - Mobile/PWA Compatible
+// CameraModal Component - Android PWA Optimized
 function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const drawingCanvasRef = useRef(null);
   const containerRef = useRef(null);
   const mediaRecorderRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const photoInputRef = useRef(null);
+  const videoInputRef = useRef(null);
+  
   const [stream, setStream] = useState(null);
   const [devices, setDevices] = useState([]);
   const [imageToEdit, setImageToEdit] = useState(null);
@@ -453,7 +448,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const [drawTool, setDrawTool] = useState("pen");
   const [drawHistory, setDrawHistory] = useState([]);
   const [historyStep, setHistoryStep] = useState(-1);
-  const [startPoint, setStartPoint] = useState(null);
   const [textInput, setTextInput] = useState("");
   const [textPosition, setTextPosition] = useState(null);
   const [tempElement, setTempElement] = useState(null);
@@ -464,26 +458,42 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const [showDeleteZone, setShowDeleteZone] = useState(false);
   const [isOverDeleteZone, setIsOverDeleteZone] = useState(false);
   const [cameraError, setCameraError] = useState(null);
-  const [useNativeCamera, setUseNativeCamera] = useState(false);
   const [cameraType, setCameraType] = useState("environment");
-  const [isProcessingNativeImage, setIsProcessingNativeImage] = useState(false);
-  const [nativeImageLoaded, setNativeImageLoaded] = useState(false);
+  const [processingImage, setProcessingImage] = useState(false);
+  const [cameraAccessMethod, setCameraAccessMethod] = useState("direct"); // 'direct' or 'native'
+
+  // Check if Android device
+  const isAndroid = () => {
+    return /Android/i.test(navigator.userAgent);
+  };
+
+  // Check if PWA installed
+  const isPWA = () => {
+    return window.matchMedia('(display-mode: standalone)').matches || 
+           window.navigator.standalone === true ||
+           document.referrer.includes('android-app://');
+  };
 
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
+      // For Android PWA, default to native camera for better compatibility
+      if (isAndroid() && isPWA()) {
+        setCameraAccessMethod("native");
+      }
     } else {
       document.body.style.overflow = "auto";
     }
 
     return () => {
       document.body.style.overflow = "auto";
+      stopCamera();
     };
   }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
-      if (mode === "photo") {
+      if (mode === "photo" && cameraAccessMethod === "direct") {
         initializeCamera();
       } else if (mode === "video") {
         initializeVideoRecorder();
@@ -493,11 +503,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     return () => {
       stopCamera();
     };
-  }, [isOpen, mode]);
+  }, [isOpen, mode, cameraAccessMethod]);
 
   useEffect(() => {
     if (isCropping && imageToEdit && imageDimensions.width) {
-      // Set crop to cover entire image by default
       setCropRect({
         x: 0,
         y: 0,
@@ -507,65 +516,30 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     }
   }, [isCropping, imageToEdit, imageDimensions]);
 
-  // Fix for Android: Handle when native camera returns image
-  useEffect(() => {
-    if (preview && mode === "photo" && !isCropping && !nativeImageLoaded) {
-      console.log("Native image loaded, entering edit mode");
-      handleNativeImageLoaded();
-    }
-  }, [preview, mode, isCropping, nativeImageLoaded]);
-
-  const handleNativeImageLoaded = () => {
-    setIsProcessingNativeImage(true);
-    setNativeImageLoaded(true);
-    
-    const img = new Image();
-    img.onload = () => {
-      console.log("Image dimensions:", img.width, "x", img.height);
-      setImageDimensions({ width: img.width, height: img.height });
-      setIsCropping(true);
-      setEditorMode("crop");
-      setIsProcessingNativeImage(false);
-      setUseNativeCamera(false);
-      setCameraError(null);
-      stopCamera();
-    };
-    img.onerror = () => {
-      console.error("Failed to load native image");
-      setIsProcessingNativeImage(false);
-      setNativeImageLoaded(false);
-    };
-    img.src = preview;
-  };
-
   const initializeCamera = async () => {
     try {
       setCameraError(null);
-      setUseNativeCamera(false);
-      setNativeImageLoaded(false);
-      setIsProcessingNativeImage(false);
-
-      // Mobile-friendly camera constraints
+      
       const constraints = {
         video: {
           facingMode: {
             ideal: cameraType === "environment" ? "environment" : "user",
           },
-          width: { ideal: 1920, max: 1920 },
-          height: { ideal: 1080, max: 1080 },
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
           frameRate: { ideal: 30 },
         },
         audio: false,
       };
 
-      // Add more flexible constraints for mobile
-      if (isMobileDevice()) {
+      // Android-specific constraints
+      if (isAndroid()) {
         constraints.video = {
           facingMode: {
             ideal: cameraType === "environment" ? "environment" : "user",
           },
-          width: { min: 640, ideal: 1280, max: 1920 },
-          height: { min: 480, ideal: 720, max: 1080 },
+          width: { min: 640, ideal: 1280 },
+          height: { min: 480, ideal: 720 },
         };
       }
 
@@ -577,7 +551,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           .play()
           .catch((e) => console.warn("Video play error:", e));
 
-        // Apply mirroring for front camera
         if (cameraType === "user") {
           videoRef.current.style.transform = "scaleX(-1)";
         } else {
@@ -585,7 +558,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         }
       }
 
-      // Get available devices
       try {
         const allDevices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = allDevices.filter(
@@ -597,30 +569,12 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       }
     } catch (err) {
       console.error("Camera initialization error:", err);
-
-      // For mobile, fallback to native camera input
-      if (isMobileDevice()) {
-        setCameraError(
-          "Cannot access camera directly. Using native camera instead.",
-        );
-        setUseNativeCamera(true);
-      } else {
-        setCameraError(err.message || "Cannot access camera");
-
-        // Try with more basic constraints
-        try {
-          const fallbackStream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-          });
-          setStream(fallbackStream);
-          if (videoRef.current) {
-            videoRef.current.srcObject = fallbackStream;
-          }
-          setCameraError(null);
-        } catch (fallbackErr) {
-          console.error("Fallback camera error:", fallbackErr);
-          setCameraError("Camera access denied. Please check permissions.");
-        }
+      setCameraError(err.message || "Cannot access camera");
+      
+      // For Android, suggest using native camera
+      if (isAndroid()) {
+        setCameraError("Direct camera access failed. Please use native camera.");
+        setCameraAccessMethod("native");
       }
     }
   };
@@ -628,10 +582,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const initializeVideoRecorder = async () => {
     try {
       setCameraError(null);
-      setUseNativeCamera(false);
-      setNativeImageLoaded(false);
 
-      // Mobile-friendly video constraints
       const constraints = {
         video: {
           width: { ideal: 1280, max: 1920 },
@@ -643,7 +594,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         audio: true,
       };
 
-      if (isMobileDevice()) {
+      if (isAndroid()) {
         constraints.video = {
           width: { min: 640, ideal: 1280 },
           height: { min: 480, ideal: 720 },
@@ -662,7 +613,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           .play()
           .catch((e) => console.warn("Video play error:", e));
 
-        // Apply mirroring for front camera
         if (cameraType === "user") {
           videoRef.current.style.transform = "scaleX(-1)";
         } else {
@@ -699,39 +649,8 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       };
     } catch (err) {
       console.error("Video recorder initialization error:", err);
-
-      // For mobile, fallback to native camera input
-      if (isMobileDevice()) {
-        setCameraError(
-          "Cannot access camera directly. Using native camera instead.",
-        );
-        setUseNativeCamera(true);
-      } else {
-        setCameraError(err.message || "Cannot access camera/microphone");
-
-        // Try without audio
-        try {
-          const fallbackStream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false,
-          });
-          setStream(fallbackStream);
-          if (videoRef.current) {
-            videoRef.current.srcObject = fallbackStream;
-          }
-          setCameraError("Audio not available, video only");
-        } catch (fallbackErr) {
-          console.error("Fallback video error:", fallbackErr);
-          setCameraError("Camera access denied. Please check permissions.");
-        }
-      }
+      setCameraError(err.message || "Cannot access camera/microphone");
     }
-  };
-
-  const isMobileDevice = () => {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent,
-    );
   };
 
   const stopCamera = () => {
@@ -779,7 +698,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           .play()
           .catch((e) => console.warn("Video play error:", e));
 
-        // Check if it's front camera and apply mirroring
         const settings = newStream.getVideoTracks()[0].getSettings();
         if (settings.facingMode === "user") {
           videoRef.current.style.transform = "scaleX(-1)";
@@ -791,7 +709,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       }
     } catch (err) {
       console.error("Error switching camera:", err);
-      // Try to reinitialize with default camera
       mode === "video" ? initializeVideoRecorder() : initializeCamera();
     }
   };
@@ -803,7 +720,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         setIsRecording(true);
       } catch (err) {
         console.error("Error starting recording:", err);
-        // Try with different mimeType
         const stream = videoRef.current?.srcObject;
         if (stream) {
           const options = { mimeType: "video/webm" };
@@ -842,31 +758,23 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     if (!video || !canvas || video.readyState !== 4) return;
 
     const ctx = canvas.getContext("2d");
-
-    // Set canvas dimensions to match video dimensions
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
-    // Check if we're using front camera (mirrored)
     const isFrontCamera = cameraType === "user";
 
     if (isFrontCamera) {
-      // For front camera: un-mirror the image
       ctx.save();
-      ctx.scale(-1, 1); // Flip horizontally
+      ctx.scale(-1, 1);
       ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
       ctx.restore();
     } else {
-      // For rear camera: draw normally
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     }
 
     const dataUrl = canvas.toDataURL("image/png", 0.9);
-
-    setImageToEdit(dataUrl);
-    setPreview(dataUrl);
-    setNativeImageLoaded(true);
     
+    setImageToEdit(dataUrl);
     const img = new Image();
     img.onload = () => {
       setImageDimensions({ width: img.width, height: img.height });
@@ -877,221 +785,66 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     stopCamera();
   };
 
-  const handleFileChange = (e) => {
+  // ANDROID-SPECIFIC FIX: Handle file input for native camera
+  const handleFileInput = (e, inputType) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Reset the file input so the same file can be selected again
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    // Reset input for Android compatibility
+    e.target.value = '';
 
+    setProcessingImage(true);
+    
     const reader = new FileReader();
     reader.onload = (ev) => {
-      if (file.type.startsWith("image/")) {
+      if (inputType === "photo") {
         const img = new Image();
         img.onload = () => {
           const imageDataUrl = ev.target.result;
-          console.log("Native image selected, size:", img.width, "x", img.height);
+          console.log("Android native image loaded:", img.width, "x", img.height);
           setImageToEdit(imageDataUrl);
           setPreview(imageDataUrl);
           setImageDimensions({ width: img.width, height: img.height });
           setIsCropping(true);
-          setUseNativeCamera(false);
+          setProcessingImage(false);
           setCameraError(null);
-          setNativeImageLoaded(true);
           stopCamera();
         };
         img.onerror = () => {
-          console.error("Failed to load image");
+          console.error("Failed to load image on Android");
           setCameraError("Failed to load image. Please try again.");
+          setProcessingImage(false);
         };
         img.src = ev.target.result;
-      } else if (file.type.startsWith("video/")) {
+      } else if (inputType === "video") {
         const videoUrl = ev.target.result;
         setPreview(videoUrl);
-        setUseNativeCamera(false);
+        setProcessingImage(false);
         setCameraError(null);
-        setNativeImageLoaded(false);
       }
     };
     reader.onerror = () => {
-      console.error("File reading error");
+      console.error("File reading error on Android");
       setCameraError("Failed to read file. Please try again.");
+      setProcessingImage(false);
     };
     reader.readAsDataURL(file);
   };
 
-  const openNativeCamera = () => {
-    if (fileInputRef.current) {
-      // Clear the file input first
-      fileInputRef.current.value = "";
-      // Set attributes for Android compatibility
-      fileInputRef.current.setAttribute("capture", cameraType === "environment" ? "environment" : "user");
-      fileInputRef.current.setAttribute("accept", mode === "photo" ? "image/*" : "video/*");
-      // Trigger click to open camera
+  const openNativeCamera = (inputType) => {
+    setProcessingImage(true);
+    if (inputType === "photo" && photoInputRef.current) {
+      // Clear and trigger photo input
+      photoInputRef.current.value = "";
       setTimeout(() => {
-        fileInputRef.current.click();
+        photoInputRef.current.click();
       }, 100);
-    }
-  };
-
-  // Touch event handlers for mobile
-  const handleTouchStart = (e) => {
-    if (editorMode !== "draw") return;
-
-    e.preventDefault();
-    const touch = e.touches[0];
-    const coords = getCanvasCoordinates(touch);
-
-    // Check if touching an existing element
-    const clickedElement = findElementAtPosition(coords.x, coords.y);
-
-    if (clickedElement) {
-      setSelectedElement(clickedElement);
-      const offsetX = coords.x - clickedElement.x;
-      const offsetY = coords.y - clickedElement.y;
-      setDragOffset({ x: offsetX, y: offsetY });
-      setIsDraggingElement(true);
-      setShowDeleteZone(true);
-      return;
-    }
-
-    // Deselect if touching empty space
-    setSelectedElement(null);
-
-    // Start new drawing
-    if (drawTool === "text") {
-      setTextPosition(coords);
-      return;
-    }
-
-    setIsDrawing(true);
-    setStartPoint(coords);
-
-    if (drawTool === "pen") {
-      setTempElement({
-        type: "pen",
-        color: drawColor,
-        points: [coords],
-        width: 3,
-      });
-    } else {
-      setTempElement({
-        type: drawTool,
-        color: drawColor,
-        x: coords.x,
-        y: coords.y,
-        width: 0,
-        height: 0,
-      });
-    }
-  };
-
-  const handleTouchMove = (e) => {
-    if (editorMode !== "draw") return;
-
-    e.preventDefault();
-    const touch = e.touches[0];
-    const coords = getCanvasCoordinates(touch);
-
-    if (isDraggingElement && selectedElement) {
-      // Check if over delete zone
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const deleteZoneTop = 50;
-      const isOverDelete = touch.clientY - containerRect.top < deleteZoneTop;
-      setIsOverDeleteZone(isOverDelete);
-
-      // Update element position
-      const newX = coords.x - dragOffset.x;
-      const newY = coords.y - dragOffset.y;
-
-      const updatedElements = elements.map((el) =>
-        el.id === selectedElement.id ? { ...el, x: newX, y: newY } : el,
-      );
-      setElements(updatedElements);
-      return;
-    }
-
-    if (!isDrawing) return;
-
-    if (drawTool === "pen") {
-      setTempElement((prev) => ({
-        ...prev,
-        points: [...prev.points, coords],
-      }));
-    } else {
-      setTempElement((prev) => ({
-        ...prev,
-        width: coords.x - prev.x,
-        height: coords.y - prev.y,
-      }));
-    }
-  };
-
-  const handleTouchEnd = (e) => {
-    if (isDraggingElement && selectedElement) {
-      // If dropped in delete zone, delete the element
-      if (isOverDeleteZone) {
-        deleteElement(selectedElement);
-      }
-
-      setIsDraggingElement(false);
-      setIsOverDeleteZone(false);
-      setShowDeleteZone(false);
-      saveDrawingState();
-      return;
-    }
-
-    if (!isDrawing || !tempElement) return;
-
-    if (drawTool === "pen" && tempElement.points.length < 2) {
-      setIsDrawing(false);
-      setTempElement(null);
-      return;
-    }
-
-    const newElement = {
-      ...tempElement,
-      id: Date.now() + Math.random(),
-    };
-
-    setElements([...elements, newElement]);
-    saveDrawingState();
-
-    setIsDrawing(false);
-    setTempElement(null);
-  };
-
-  const handleCanvasClick = (e) => {
-    if (editorMode !== "draw" || drawTool !== "text") return;
-    const coords = getCanvasCoordinates(e);
-    setTextPosition(coords);
-    setSelectedElement(null);
-  };
-
-  // Combined mouse and touch event handler
-  const handleInteractionStart = (e) => {
-    if (e.type === "touchstart") {
-      handleTouchStart(e);
-    } else {
-      handleMouseDown(e);
-    }
-  };
-
-  const handleInteractionMove = (e) => {
-    if (e.type === "touchmove") {
-      handleTouchMove(e);
-    } else {
-      handleMouseMove(e);
-    }
-  };
-
-  const handleInteractionEnd = (e) => {
-    if (e.type === "touchend") {
-      handleTouchEnd(e);
-    } else {
-      handleMouseUp(e);
+    } else if (inputType === "video" && videoInputRef.current) {
+      // Clear and trigger video input
+      videoInputRef.current.value = "";
+      setTimeout(() => {
+        videoInputRef.current.click();
+      }, 100);
     }
   };
 
@@ -1102,7 +855,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     const container = containerRef.current;
     const rect = container.getBoundingClientRect();
 
-    // Get client coordinates from mouse or touch event
     const clientX =
       event.clientX || (event.touches && event.touches[0].clientX) || 0;
     const clientY =
@@ -1125,8 +877,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     if (editorMode !== "draw") return;
 
     const coords = getCanvasCoordinates(e);
-
-    // Check if clicking on an existing element
     const clickedElement = findElementAtPosition(coords.x, coords.y);
 
     if (clickedElement) {
@@ -1139,18 +889,15 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       return;
     }
 
-    // Deselect if clicking empty space
     setSelectedElement(null);
 
-    // Start new drawing
     if (drawTool === "text") {
       setTextPosition(coords);
       return;
     }
 
     setIsDrawing(true);
-    setStartPoint(coords);
-
+    
     if (drawTool === "pen") {
       setTempElement({
         type: "pen",
@@ -1176,13 +923,11 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     const coords = getCanvasCoordinates(e);
 
     if (isDraggingElement && selectedElement) {
-      // Check if over delete zone
       const containerRect = containerRef.current.getBoundingClientRect();
       const deleteZoneTop = 50;
       const isOverDelete = e.clientY - containerRect.top < deleteZoneTop;
       setIsOverDeleteZone(isOverDelete);
 
-      // Update element position
       const newX = coords.x - dragOffset.x;
       const newY = coords.y - dragOffset.y;
 
@@ -1211,7 +956,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
   const handleMouseUp = () => {
     if (isDraggingElement && selectedElement) {
-      // If dropped in delete zone, delete the element
       if (isOverDeleteZone) {
         deleteElement(selectedElement);
       }
@@ -1475,7 +1219,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       ctx.fillText(element.text, element.x, element.y);
     }
 
-    // Draw selection border
     if (isSelected) {
       const bounds = getElementBounds(element);
 
@@ -1498,15 +1241,12 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     const canvas = drawingCanvasRef.current;
     const ctx = canvas.getContext("2d");
 
-    // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw all elements
     elements.forEach((element) => {
       drawElement(ctx, element, selectedElement?.id === element.id);
     });
 
-    // Draw temporary element
     if (tempElement) {
       drawElement(ctx, tempElement);
     }
@@ -1544,11 +1284,9 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     
     await new Promise((resolve) => {
       img.onload = () => {
-        // Set canvas size to cropped area or full image
         canvas.width = isCropping ? cropRect.width : img.width;
         canvas.height = isCropping ? cropRect.height : img.height;
         
-        // Apply rotation
         if (rotation !== 0) {
           ctx.save();
           ctx.translate(canvas.width / 2, canvas.height / 2);
@@ -1556,7 +1294,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           ctx.translate(-canvas.width / 2, -canvas.height / 2);
         }
         
-        // Draw image (cropped or full)
         if (isCropping) {
           ctx.drawImage(
             img,
@@ -1571,12 +1308,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           ctx.restore();
         }
         
-        // Apply brightness
         ctx.filter = `brightness(${brightness}%)`;
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(canvas, 0, 0);
         
-        // Draw annotations if in draw mode
         if (editorMode === 'draw' && drawingCanvasRef.current) {
           const drawCanvas = drawingCanvasRef.current;
           const drawCtx = drawCanvas.getContext('2d');
@@ -1694,7 +1429,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           document.addEventListener("touchend", handleMouseUp);
         }}
       >
-        {/* Semi-transparent overlay */}
         <div
           style={{
             position: "absolute",
@@ -1706,7 +1440,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           }}
         />
 
-        {/* Crop rectangle - now full image by default */}
         <div
           style={{
             position: "absolute",
@@ -1719,7 +1452,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             boxSizing: "border-box",
           }}
         >
-          {/* Corner handles - larger for mobile */}
           {["nw", "ne", "sw", "se"].map((corner) => {
             const style = {
               position: "absolute",
@@ -1849,44 +1581,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     setShowDeleteZone(false);
     setIsOverDeleteZone(false);
     setCameraError(null);
-    setUseNativeCamera(false);
-    setIsProcessingNativeImage(false);
-    setNativeImageLoaded(false);
+    setProcessingImage(false);
     
-    // Clear file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-    
-    // Stop camera stream
-    if (stream) {
-      stream.getTracks().forEach((track) => {
-        track.stop();
-        track.enabled = false;
-      });
-      setStream(null);
-    }
+    stopCamera();
   };
-
-  // Add hidden file input for native camera
-  const renderNativeCameraInput = () => (
-    <input
-      ref={fileInputRef}
-      type="file"
-      accept={mode === "photo" ? "image/*" : "video/*"}
-      capture={
-        mode === "photo"
-          ? cameraType === "environment"
-            ? "environment"
-            : "user"
-          : cameraType === "environment"
-            ? "environment"
-            : "user"
-      }
-      onChange={handleFileChange}
-      style={{ display: "none" }}
-    />
-  );
 
   if (!isOpen) return null;
 
@@ -1903,17 +1601,31 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         alignItems: "center",
         justifyContent: "center",
         zIndex: 20000,
-        touchAction: "none",
       }}
       onClick={() => {
-        if (!isCropping && !textPosition && !isProcessingNativeImage) {
-          stopCamera();
+        if (!isCropping && !textPosition && !processingImage) {
           resetStates();
           onClose();
         }
       }}
     >
-      {renderNativeCameraInput()}
+      {/* Hidden file inputs for Android native camera */}
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        capture={cameraType === "environment" ? "environment" : "user"}
+        onChange={(e) => handleFileInput(e, "photo")}
+        style={{ display: "none" }}
+      />
+      <input
+        ref={videoInputRef}
+        type="file"
+        accept="video/*"
+        capture={cameraType === "environment" ? "environment" : "user"}
+        onChange={(e) => handleFileInput(e, "video")}
+        style={{ display: "none" }}
+      />
 
       <div
         style={{
@@ -1924,7 +1636,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           width: "95vw",
           maxWidth: "800px",
           zIndex: 20001,
-          WebkitOverflowScrolling: "touch",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1949,10 +1660,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               margin: 0,
             }}
           >
-            {isProcessingNativeImage ? (
+            {processingImage ? (
               <>
                 <MdCamera style={{ fontSize: "1.25rem" }} />
-                <span>Processing Image...</span>
+                <span>Loading Image...</span>
               </>
             ) : mode === "video" ? (
               <>
@@ -1973,7 +1684,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           </h3>
           <button
             onClick={() => {
-              stopCamera();
               resetStates();
               onClose();
             }}
@@ -1990,10 +1700,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               alignItems: "center",
               justifyContent: "center",
               transition: "all 0.2s ease",
-              touchAction: "manipulation",
             }}
-            onMouseOver={(e) => (e.target.style.backgroundColor = "#4b5563")}
-            onMouseOut={(e) => (e.target.style.backgroundColor = "#374151")}
           >
             ×
           </button>
@@ -2008,7 +1715,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             flexDirection: "column",
           }}
         >
-          {isProcessingNativeImage ? (
+          {processingImage ? (
             <div
               style={{
                 position: "relative",
@@ -2025,29 +1732,21 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             >
               <div
                 style={{
-                  color: "white",
-                  textAlign: "center",
-                  padding: "2rem",
+                  width: "60px",
+                  height: "60px",
+                  border: "4px solid #f3f4f6",
+                  borderTop: "4px solid #10b981",
+                  borderRadius: "50%",
+                  animation: "spin 1s linear infinite",
+                  marginBottom: "1rem",
                 }}
-              >
-                <div
-                  style={{
-                    width: "60px",
-                    height: "60px",
-                    border: "4px solid #f3f4f6",
-                    borderTop: "4px solid #10b981",
-                    borderRadius: "50%",
-                    animation: "spin 1s linear infinite",
-                    margin: "0 auto 1rem",
-                  }}
-                />
-                <h3 style={{ marginBottom: "0.5rem" }}>
-                  Loading Image...
-                </h3>
-                <p style={{ fontSize: "0.9rem", color: "#9ca3af" }}>
-                  Please wait while your image is being prepared for editing
-                </p>
-              </div>
+              />
+              <h3 style={{ color: "white", marginBottom: "0.5rem" }}>
+                Processing Image...
+              </h3>
+              <p style={{ color: "#9ca3af", fontSize: "0.9rem" }}>
+                Please wait while your image loads
+              </p>
             </div>
           ) : isCropping || (mode === "photo" && preview) ? (
             <div
@@ -2061,15 +1760,15 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 overflow: "hidden",
                 backgroundColor: "#000",
                 marginBottom: "1rem",
-                touchAction: "none",
               }}
-              onMouseDown={editorMode === "draw" ? handleInteractionStart : undefined}
-              onMouseMove={editorMode === "draw" ? handleInteractionMove : undefined}
-              onMouseUp={editorMode === "draw" ? handleInteractionEnd : undefined}
-              onTouchStart={editorMode === "draw" ? handleInteractionStart : undefined}
-              onTouchMove={editorMode === "draw" ? handleInteractionMove : undefined}
-              onTouchEnd={editorMode === "draw" ? handleInteractionEnd : undefined}
-              onClick={editorMode === "draw" ? handleCanvasClick : undefined}
+              onMouseDown={editorMode === "draw" ? handleMouseDown : undefined}
+              onMouseMove={editorMode === "draw" ? handleMouseMove : undefined}
+              onMouseUp={editorMode === "draw" ? handleMouseUp : undefined}
+              onClick={editorMode === "draw" && drawTool === "text" ? (e) => {
+                const coords = getCanvasCoordinates(e);
+                setTextPosition(coords);
+                setSelectedElement(null);
+              } : undefined}
             >
               <img
                 src={imageToEdit || preview}
@@ -2080,14 +1779,9 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                   objectFit: "contain",
                   transform: `rotate(${rotation}deg)`,
                   filter: `brightness(${brightness}%)`,
-                  ...(textPosition && {
-                    filter: `brightness(${brightness}%) blur(2px)`,
-                    opacity: 0.7,
-                  }),
                 }}
               />
 
-              {/* Delete Zone (shown when dragging element) */}
               {showDeleteZone && (
                 <div
                   style={{
@@ -2104,7 +1798,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     justifyContent: "center",
                     transition: "background-color 0.3s ease",
                     zIndex: 50,
-                    touchAction: "none",
                   }}
                 >
                   <div
@@ -2125,7 +1818,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
               {editorMode === "crop" && renderCropOverlay()}
 
-              {/* Drawing Canvas Overlay */}
               {editorMode === "draw" && (
                 <canvas
                   ref={drawingCanvasRef}
@@ -2136,12 +1828,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     width: "100%",
                     height: "100%",
                     cursor: drawTool === "text" ? "text" : "crosshair",
-                    touchAction: "none",
                   }}
                 />
               )}
 
-              {/* Text Input Overlay */}
               {textPosition && (
                 <div
                   style={{
@@ -2159,8 +1849,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     width: "80%",
                     maxWidth: "400px",
                     zIndex: 100,
-                    backdropFilter: "blur(4px)",
-                    WebkitBackdropFilter: "blur(4px)",
                   }}
                 >
                   <span
@@ -2186,8 +1874,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                       backgroundColor: "rgba(255, 255, 255, 0.1)",
                       color: "white",
                       fontSize: "1rem",
-                      WebkitAppearance: "none",
-                      MozAppearance: "textfield",
                     }}
                     onKeyPress={handleKeyPress}
                   />
@@ -2212,7 +1898,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                         borderRadius: "0.25rem",
                         cursor: "pointer",
                         fontSize: "0.9rem",
-                        touchAction: "manipulation",
                       }}
                     >
                       Cancel
@@ -2229,7 +1914,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                         cursor: textInput.trim() ? "pointer" : "not-allowed",
                         fontSize: "0.9rem",
                         opacity: textInput.trim() ? 1 : 0.5,
-                        touchAction: "manipulation",
                       }}
                     >
                       Add
@@ -2261,7 +1945,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 }}
               />
             </div>
-          ) : useNativeCamera ? (
+          ) : mode === "photo" && cameraAccessMethod === "native" ? (
             <div
               style={{
                 position: "relative",
@@ -2285,14 +1969,13 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 }}
               >
                 <MdCamera size={48} style={{ marginBottom: "1rem" }} />
-                <h3 style={{ marginBottom: "0.5rem" }}>Native Camera Access</h3>
+                <h3 style={{ marginBottom: "0.5rem" }}>
+                  {isAndroid() ? "Android Camera" : "Camera Access"}
+                </h3>
                 <p style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
-                  Using device's native camera for better compatibility
-                </p>
-                <p style={{ fontSize: "0.8rem", color: "#9ca3af" }}>
-                  {mode === "photo"
-                    ? "The camera will open to take a photo. After taking a photo, it will be loaded here for editing."
-                    : "The camera will open to record video. After recording, it will be loaded here for editing."}
+                  {isAndroid() && isPWA()
+                    ? "Using Android's native camera for best compatibility"
+                    : "Take a photo using your device's camera"}
                 </p>
               </div>
 
@@ -2302,12 +1985,13 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                   gap: "1rem",
                   justifyContent: "center",
                   flexWrap: "wrap",
+                  marginBottom: "2rem",
                 }}
               >
                 <button
                   onClick={() => {
                     setCameraType("environment");
-                    openNativeCamera();
+                    openNativeCamera("photo");
                   }}
                   style={{
                     padding: "0.75rem 1.5rem",
@@ -2329,7 +2013,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 <button
                   onClick={() => {
                     setCameraType("user");
-                    openNativeCamera();
+                    openNativeCamera("photo");
                   }}
                   style={{
                     padding: "0.75rem 1.5rem",
@@ -2349,22 +2033,35 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 </button>
               </div>
 
+              {cameraError && (
+                <div
+                  style={{
+                    backgroundColor: "rgba(239, 68, 68, 0.1)",
+                    border: "1px solid #ef4444",
+                    borderRadius: "0.5rem",
+                    padding: "1rem",
+                    marginBottom: "1rem",
+                    width: "100%",
+                  }}
+                >
+                  <p style={{ color: "#ef4444", fontSize: "0.9rem", margin: 0 }}>
+                    {cameraError}
+                  </p>
+                </div>
+              )}
+
               <div
                 style={{
                   display: "flex",
                   gap: "1rem",
                   justifyContent: "center",
-                  marginTop: "1rem",
                   width: "100%",
                 }}
               >
                 <button
                   onClick={() => {
-                    setUseNativeCamera(false);
-                    setCameraError(null);
-                    mode === "video"
-                      ? initializeVideoRecorder()
-                      : initializeCamera();
+                    setCameraAccessMethod("direct");
+                    initializeCamera();
                   }}
                   style={{
                     padding: "0.75rem 1.5rem",
@@ -2377,12 +2074,11 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     maxWidth: "200px",
                   }}
                 >
-                  Back to Web Camera
+                  Use Web Camera
                 </button>
 
                 <button
                   onClick={() => {
-                    setUseNativeCamera(false);
                     resetStates();
                     onClose();
                   }}
@@ -2412,7 +2108,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 minHeight: "300px",
               }}
             >
-              {/* Camera Error Message */}
               {cameraError && (
                 <div
                   style={{
@@ -2440,7 +2135,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     {cameraError}
                   </p>
 
-                  {isMobileDevice() && (
+                  {isAndroid() && (
                     <div
                       style={{
                         display: "flex",
@@ -2453,9 +2148,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                       <button
                         onClick={() => {
                           setCameraError(null);
-                          mode === "video"
-                            ? initializeVideoRecorder()
-                            : initializeCamera();
+                          initializeCamera();
                         }}
                         style={{
                           padding: "0.75rem 1.5rem",
@@ -2466,12 +2159,12 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                           cursor: "pointer",
                         }}
                       >
-                        Retry Direct Access
+                        Retry Web Camera
                       </button>
 
                       <button
                         onClick={() => {
-                          setUseNativeCamera(true);
+                          setCameraAccessMethod("native");
                           setCameraError(null);
                         }}
                         style={{
@@ -2523,9 +2216,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     justifyContent: "center",
                     cursor: "pointer",
                     transition: "all 0.2s ease",
-                    touchAction: "manipulation",
                   }}
-                  title="Switch Camera"
                 >
                   <MdFlipCameraAndroid size={24} />
                 </button>
@@ -2557,7 +2248,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                       cursor: "pointer",
                       boxShadow: "0 4px 6px rgba(0, 0, 0, 0.2)",
                       transition: "all 0.2s ease",
-                      touchAction: "manipulation",
                     }}
                   >
                     <MdCamera size={32} />
@@ -2593,7 +2283,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                           alignItems: "center",
                           gap: "0.5rem",
                           boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)",
-                          touchAction: "manipulation",
                         }}
                       >
                         <MdPlayArrow size={20} />
@@ -2615,7 +2304,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                           alignItems: "center",
                           gap: "0.5rem",
                           boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)",
-                          touchAction: "manipulation",
                         }}
                       >
                         <MdStop size={20} />
@@ -2632,7 +2320,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         </div>
 
         {/* Editor Controls */}
-        {(isCropping || (mode === "photo" && preview && !useNativeCamera)) && (
+        {(isCropping || (mode === "photo" && preview)) && (
           <div
             style={{
               padding: "1rem",
@@ -2640,7 +2328,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               backgroundColor: "#111827",
             }}
           >
-            {/* Mode Selection */}
             <div
               style={{
                 display: "flex",
@@ -2666,7 +2353,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                   gap: "0.5rem",
                   transition: "all 0.2s ease",
                   minWidth: "100px",
-                  touchAction: "manipulation",
                 }}
               >
                 <MdCrop size={18} />
@@ -2689,7 +2375,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                   gap: "0.5rem",
                   transition: "all 0.2s ease",
                   minWidth: "100px",
-                  touchAction: "manipulation",
                 }}
               >
                 <MdBrush size={18} />
@@ -2712,14 +2397,12 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                   gap: "0.5rem",
                   transition: "all 0.2s ease",
                   minWidth: "100px",
-                  touchAction: "manipulation",
                 }}
               >
                 Filter
               </button>
             </div>
 
-            {/* Drawing Tools */}
             {editorMode === "draw" && (
               <div
                 style={{
@@ -2729,7 +2412,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                   marginBottom: "1rem",
                 }}
               >
-                {/* Drawing Tools Selection */}
                 <div
                   style={{
                     display: "flex",
@@ -2752,7 +2434,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                       alignItems: "center",
                       gap: "0.25rem",
                       minWidth: "60px",
-                      touchAction: "manipulation",
                     }}
                   >
                     <MdBrush size={22} />
@@ -2771,7 +2452,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                       alignItems: "center",
                       gap: "0.25rem",
                       minWidth: "60px",
-                      touchAction: "manipulation",
                     }}
                   >
                     <FaArrowRight size={20} />
@@ -2790,7 +2470,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                       alignItems: "center",
                       gap: "0.25rem",
                       minWidth: "60px",
-                      touchAction: "manipulation",
                     }}
                   >
                     <MdCircle size={22} />
@@ -2809,7 +2488,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                       alignItems: "center",
                       gap: "0.25rem",
                       minWidth: "60px",
-                      touchAction: "manipulation",
                     }}
                   >
                     <MdSquare size={22} />
@@ -2828,14 +2506,12 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                       alignItems: "center",
                       gap: "0.25rem",
                       minWidth: "60px",
-                      touchAction: "manipulation",
                     }}
                   >
                     <MdTextFields size={22} />
                   </button>
                 </div>
 
-                {/* Color Selection */}
                 <div
                   style={{
                     display: "flex",
@@ -2871,36 +2547,11 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                             : "2px solid #6b7280",
                         borderRadius: "50%",
                         cursor: "pointer",
-                        touchAction: "manipulation",
                       }}
                     />
                   ))}
                 </div>
 
-                {/* Instructions */}
-                <div
-                  style={{
-                    textAlign: "center",
-                    color: "#9ca3af",
-                    fontSize: "0.8rem",
-                    padding: "0.5rem",
-                    lineHeight: "1.4",
-                  }}
-                >
-                  {selectedElement ? (
-                    <span>
-                      Drag to move • Drag to top red zone to delete • Tap
-                      outside to deselect
-                    </span>
-                  ) : (
-                    <span>
-                      Tap to select • Touch and drag to draw • Tap anywhere to
-                      add text
-                    </span>
-                  )}
-                </div>
-
-                {/* Undo/Redo */}
                 <div
                   style={{
                     display: "flex",
@@ -2922,7 +2573,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                       alignItems: "center",
                       gap: "0.5rem",
                       opacity: historyStep <= 0 ? 0.5 : 1,
-                      touchAction: "manipulation",
                       minWidth: "120px",
                     }}
                   >
@@ -2949,7 +2599,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                       alignItems: "center",
                       gap: "0.5rem",
                       opacity: historyStep >= drawHistory.length - 1 ? 0.5 : 1,
-                      touchAction: "manipulation",
                       minWidth: "120px",
                     }}
                   >
@@ -2960,7 +2609,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               </div>
             )}
 
-            {/* Filter Controls */}
             {editorMode === "filter" && (
               <div
                 style={{
@@ -3004,7 +2652,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               </div>
             )}
 
-            {/* Rotation Controls */}
             <div
               style={{
                 display: "flex",
@@ -3026,7 +2673,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                   display: "flex",
                   alignItems: "center",
                   gap: "0.5rem",
-                  touchAction: "manipulation",
                   minWidth: "140px",
                 }}
               >
@@ -3046,7 +2692,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                   display: "flex",
                   alignItems: "center",
                   gap: "0.5rem",
-                  touchAction: "manipulation",
                   minWidth: "140px",
                 }}
               >
@@ -3055,12 +2700,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               </button>
             </div>
 
-            {/* Action Buttons */}
             <div
               style={{
                 display: "flex",
                 gap: "0.75rem",
-                flexDirection: isMobileDevice() ? "column" : "row",
               }}
             >
               <button
@@ -3077,7 +2720,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                   fontSize: "1rem",
                   cursor: "pointer",
                   transition: "all 0.2s ease",
-                  touchAction: "manipulation",
                 }}
               >
                 ✓ Save Image
@@ -3098,7 +2740,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                   fontSize: "1rem",
                   cursor: "pointer",
                   transition: "all 0.2s ease",
-                  touchAction: "manipulation",
                 }}
               >
                 Cancel
@@ -3107,8 +2748,8 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           </div>
         )}
 
-        {/* Footer Buttons (when not cropping) */}
-        {!isCropping && !isProcessingNativeImage && (
+        {/* Footer Buttons */}
+        {!isCropping && !processingImage && mode === "photo" && !preview && (
           <div
             style={{
               padding: "1rem",
@@ -3122,90 +2763,96 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 gap: "0.75rem",
               }}
             >
-              {mode === "photo" && !preview && (
-                <label
-                  style={{
-                    background: "#374151",
-                    color: "white",
-                    padding: "1rem",
-                    borderRadius: "8px",
-                    fontWeight: "600",
-                    fontSize: "0.9rem",
-                    border: "none",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "0.5rem",
-                    textAlign: "center",
-                    width: "100%",
-                    touchAction: "manipulation",
-                  }}
-                >
-                  <MdFileUpload size={20} />
-                  <span>Choose Photo</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    style={{ display: "none" }}
-                  />
-                </label>
-              )}
-
-              {mode === "video" && !isRecording && !preview && (
-                <label
-                  style={{
-                    background: "#374151",
-                    color: "white",
-                    padding: "1rem",
-                    borderRadius: "8px",
-                    fontWeight: "600",
-                    fontSize: "0.9rem",
-                    border: "none",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "0.5rem",
-                    textAlign: "center",
-                    width: "100%",
-                    touchAction: "manipulation",
-                  }}
-                >
-                  <MdFileUpload size={20} />
-                  <span>Choose Video</span>
-                  <input
-                    type="file"
-                    accept="video/*"
-                    onChange={handleFileChange}
-                    style={{ display: "none" }}
-                  />
-                </label>
-              )}
-
-              {preview && mode === "video" && (
-                <button
-                  onClick={handleSaveVideo}
-                  style={{
-                    background:
-                      "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
-                    color: "white",
-                    padding: "1rem",
-                    borderRadius: "8px",
-                    fontWeight: "600",
-                    fontSize: "1rem",
-                    border: "none",
-                    cursor: "pointer",
-                    textAlign: "center",
-                    width: "100%",
-                    touchAction: "manipulation",
-                  }}
-                >
-                  Use Video
-                </button>
-              )}
+              <button
+                onClick={() => openNativeCamera("photo")}
+                style={{
+                  background: "#374151",
+                  color: "white",
+                  padding: "1rem",
+                  borderRadius: "8px",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.5rem",
+                  textAlign: "center",
+                  width: "100%",
+                }}
+              >
+                <MdFileUpload size={20} />
+                <span>Use Native Camera</span>
+              </button>
             </div>
+          </div>
+        )}
+
+        {!isCropping && !processingImage && mode === "video" && !preview && (
+          <div
+            style={{
+              padding: "1rem",
+              borderTop: "1px solid #374151",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.75rem",
+              }}
+            >
+              <button
+                onClick={() => openNativeCamera("video")}
+                style={{
+                  background: "#374151",
+                  color: "white",
+                  padding: "1rem",
+                  borderRadius: "8px",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.5rem",
+                  textAlign: "center",
+                  width: "100%",
+                }}
+              >
+                <MdFileUpload size={20} />
+                <span>Use Native Camera</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {preview && mode === "video" && (
+          <div
+            style={{
+              padding: "1rem",
+              borderTop: "1px solid #374151",
+            }}
+          >
+            <button
+              onClick={handleSaveVideo}
+              style={{
+                background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
+                color: "white",
+                padding: "1rem",
+                borderRadius: "8px",
+                fontWeight: "600",
+                fontSize: "1rem",
+                border: "none",
+                cursor: "pointer",
+                textAlign: "center",
+                width: "100%",
+              }}
+            >
+              Use Video
+            </button>
           </div>
         )}
       </div>
