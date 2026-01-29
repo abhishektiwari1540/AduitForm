@@ -460,14 +460,18 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const [cameraError, setCameraError] = useState(null);
   const [cameraType, setCameraType] = useState("environment");
   const [processingImage, setProcessingImage] = useState(false);
-  const [cameraAccessMethod, setCameraAccessMethod] = useState("direct"); // 'direct' or 'native'
+  const [cameraAccessMethod, setCameraAccessMethod] = useState("direct");
+  const [touchStartPos, setTouchStartPos] = useState({ x: 0, y: 0 });
 
-  // Check if Android device
+  // Check if mobile device
+  const isMobile = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  };
+
   const isAndroid = () => {
     return /Android/i.test(navigator.userAgent);
   };
 
-  // Check if PWA installed
   const isPWA = () => {
     return window.matchMedia('(display-mode: standalone)').matches || 
            window.navigator.standalone === true ||
@@ -477,16 +481,21 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
-      // For Android PWA, default to native camera for better compatibility
-      if (isAndroid() && isPWA()) {
+      document.documentElement.style.overflow = "hidden";
+      document.body.style.touchAction = "none";
+      if (isMobile()) {
         setCameraAccessMethod("native");
       }
     } else {
       document.body.style.overflow = "auto";
+      document.documentElement.style.overflow = "auto";
+      document.body.style.touchAction = "auto";
     }
 
     return () => {
       document.body.style.overflow = "auto";
+      document.documentElement.style.overflow = "auto";
+      document.body.style.touchAction = "auto";
       stopCamera();
     };
   }, [isOpen]);
@@ -532,8 +541,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         audio: false,
       };
 
-      // Android-specific constraints
-      if (isAndroid()) {
+      if (isMobile()) {
         constraints.video = {
           facingMode: {
             ideal: cameraType === "environment" ? "environment" : "user",
@@ -571,8 +579,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       console.error("Camera initialization error:", err);
       setCameraError(err.message || "Cannot access camera");
       
-      // For Android, suggest using native camera
-      if (isAndroid()) {
+      if (isMobile()) {
         setCameraError("Direct camera access failed. Please use native camera.");
         setCameraAccessMethod("native");
       }
@@ -594,7 +601,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         audio: true,
       };
 
-      if (isAndroid()) {
+      if (isMobile()) {
         constraints.video = {
           width: { min: 640, ideal: 1280 },
           height: { min: 480, ideal: 720 },
@@ -620,7 +627,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         }
       }
 
-      // Initialize MediaRecorder
       const options = { mimeType: "video/webm;codecs=vp9,opus" };
       if (!MediaRecorder.isTypeSupported(options.mimeType)) {
         options.mimeType = "video/webm;codecs=vp8,opus";
@@ -785,12 +791,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     stopCamera();
   };
 
-  // ANDROID-SPECIFIC FIX: Handle file input for native camera
   const handleFileInput = (e, inputType) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Reset input for Android compatibility
     e.target.value = '';
 
     setProcessingImage(true);
@@ -801,7 +805,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         const img = new Image();
         img.onload = () => {
           const imageDataUrl = ev.target.result;
-          console.log("Android native image loaded:", img.width, "x", img.height);
           setImageToEdit(imageDataUrl);
           setPreview(imageDataUrl);
           setImageDimensions({ width: img.width, height: img.height });
@@ -811,7 +814,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           stopCamera();
         };
         img.onerror = () => {
-          console.error("Failed to load image on Android");
           setCameraError("Failed to load image. Please try again.");
           setProcessingImage(false);
         };
@@ -824,7 +826,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       }
     };
     reader.onerror = () => {
-      console.error("File reading error on Android");
       setCameraError("Failed to read file. Please try again.");
       setProcessingImage(false);
     };
@@ -834,13 +835,11 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const openNativeCamera = (inputType) => {
     setProcessingImage(true);
     if (inputType === "photo" && photoInputRef.current) {
-      // Clear and trigger photo input
       photoInputRef.current.value = "";
       setTimeout(() => {
         photoInputRef.current.click();
       }, 100);
     } else if (inputType === "video" && videoInputRef.current) {
-      // Clear and trigger video input
       videoInputRef.current.value = "";
       setTimeout(() => {
         videoInputRef.current.click();
@@ -848,34 +847,174 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     }
   };
 
-  // Drawing functions
+  // Fixed getCanvasCoordinates function for mobile
   const getCanvasCoordinates = (event) => {
     if (!containerRef.current) return { x: 0, y: 0 };
 
     const container = containerRef.current;
     const rect = container.getBoundingClientRect();
+    
+    // Get touch or mouse coordinates
+    let clientX, clientY;
+    if (event.touches && event.touches.length > 0) {
+      clientX = event.touches[0].clientX;
+      clientY = event.touches[0].clientY;
+    } else {
+      clientX = event.clientX;
+      clientY = event.clientY;
+    }
 
-    const clientX =
-      event.clientX || (event.touches && event.touches[0].clientX) || 0;
-    const clientY =
-      event.clientY || (event.touches && event.touches[0].clientY) || 0;
+    // Calculate image display dimensions and position
+    const containerWidth = rect.width;
+    const containerHeight = rect.height;
+    const imageRatio = imageDimensions.width / imageDimensions.height;
+    
+    let displayWidth, displayHeight, offsetX, offsetY;
+    
+    if (containerWidth / containerHeight > imageRatio) {
+      displayHeight = containerHeight;
+      displayWidth = containerHeight * imageRatio;
+      offsetX = (containerWidth - displayWidth) / 2;
+      offsetY = 0;
+    } else {
+      displayWidth = containerWidth;
+      displayHeight = containerWidth / imageRatio;
+      offsetX = 0;
+      offsetY = (containerHeight - displayHeight) / 2;
+    }
 
-    const scaleX = imageDimensions.width / rect.width;
-    const scaleY = imageDimensions.height / rect.height;
-    const scale = Math.min(scaleX, scaleY);
-
-    const offsetX = (rect.width - imageDimensions.width / scale) / 2;
-    const offsetY = (rect.height - imageDimensions.height / scale) / 2;
-
+    // Convert screen coordinates to image coordinates
+    const scale = imageDimensions.width / displayWidth;
     const x = (clientX - rect.left - offsetX) * scale;
     const y = (clientY - rect.top - offsetY) * scale;
 
-    return { x, y };
+    return {
+      x: Math.max(0, Math.min(imageDimensions.width, x)),
+      y: Math.max(0, Math.min(imageDimensions.height, y))
+    };
+  };
+
+  const handleTouchStart = (e) => {
+    if (editorMode !== "draw") return;
+    e.preventDefault();
+    
+    const coords = getCanvasCoordinates(e);
+    const clickedElement = findElementAtPosition(coords.x, coords.y);
+
+    if (clickedElement) {
+      setSelectedElement(clickedElement);
+      const offsetX = coords.x - clickedElement.x;
+      const offsetY = coords.y - clickedElement.y;
+      setDragOffset({ x: offsetX, y: offsetY });
+      setIsDraggingElement(true);
+      setShowDeleteZone(true);
+      setTouchStartPos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+      return;
+    }
+
+    setSelectedElement(null);
+
+    if (drawTool === "text") {
+      setTextPosition(coords);
+      return;
+    }
+
+    setIsDrawing(true);
+    
+    if (drawTool === "pen") {
+      setTempElement({
+        type: "pen",
+        color: drawColor,
+        points: [coords],
+        width: 3,
+      });
+    } else {
+      setTempElement({
+        type: drawTool,
+        color: drawColor,
+        x: coords.x,
+        y: coords.y,
+        width: 0,
+        height: 0,
+      });
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (editorMode !== "draw") return;
+    e.preventDefault();
+    
+    const coords = getCanvasCoordinates(e);
+
+    if (isDraggingElement && selectedElement) {
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const deleteZoneTop = 50;
+      const touchY = e.touches[0].clientY;
+      const isOverDelete = touchY - containerRect.top < deleteZoneTop;
+      setIsOverDeleteZone(isOverDelete);
+
+      const newX = coords.x - dragOffset.x;
+      const newY = coords.y - dragOffset.y;
+
+      const updatedElements = elements.map((el) =>
+        el.id === selectedElement.id ? { ...el, x: newX, y: newY } : el,
+      );
+      setElements(updatedElements);
+      return;
+    }
+
+    if (!isDrawing) return;
+
+    if (drawTool === "pen") {
+      setTempElement((prev) => ({
+        ...prev,
+        points: [...prev.points, coords],
+      }));
+    } else {
+      setTempElement((prev) => ({
+        ...prev,
+        width: coords.x - prev.x,
+        height: coords.y - prev.y,
+      }));
+    }
+  };
+
+  const handleTouchEnd = (e) => {
+    if (isDraggingElement && selectedElement) {
+      if (isOverDeleteZone) {
+        deleteElement(selectedElement);
+      }
+
+      setIsDraggingElement(false);
+      setIsOverDeleteZone(false);
+      setShowDeleteZone(false);
+      saveDrawingState();
+      return;
+    }
+
+    if (!isDrawing || !tempElement) return;
+
+    if (drawTool === "pen" && tempElement.points.length < 2) {
+      setIsDrawing(false);
+      setTempElement(null);
+      return;
+    }
+
+    const newElement = {
+      ...tempElement,
+      id: Date.now() + Math.random(),
+    };
+
+    setElements([...elements, newElement]);
+    saveDrawingState();
+
+    setIsDrawing(false);
+    setTempElement(null);
   };
 
   const handleMouseDown = (e) => {
-    if (editorMode !== "draw") return;
-
+    if (editorMode !== "draw" || isMobile()) return;
+    
     const coords = getCanvasCoordinates(e);
     const clickedElement = findElementAtPosition(coords.x, coords.y);
 
@@ -918,7 +1057,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   };
 
   const handleMouseMove = (e) => {
-    if (editorMode !== "draw") return;
+    if (editorMode !== "draw" || isMobile()) return;
 
     const coords = getCanvasCoordinates(e);
 
@@ -955,6 +1094,8 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   };
 
   const handleMouseUp = () => {
+    if (isMobile()) return;
+    
     if (isDraggingElement && selectedElement) {
       if (isOverDeleteZone) {
         deleteElement(selectedElement);
@@ -1266,6 +1407,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         setElements([]);
         setDrawHistory([]);
         setHistoryStep(-1);
+        renderDrawing();
       };
       img.src = imageToEdit;
     }
@@ -1357,17 +1499,32 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     if (!containerRef.current || !imageDimensions.width) return null;
 
     const rect = containerRef.current.getBoundingClientRect();
-    const scaleX = imageDimensions.width / rect.width;
-    const scaleY = imageDimensions.height / rect.height;
-    const scale = Math.min(scaleX, scaleY);
+    
+    // Calculate image display dimensions and position
+    const containerWidth = rect.width;
+    const containerHeight = rect.height;
+    const imageRatio = imageDimensions.width / imageDimensions.height;
+    
+    let displayWidth, displayHeight, offsetX, offsetY;
+    
+    if (containerWidth / containerHeight > imageRatio) {
+      displayHeight = containerHeight;
+      displayWidth = containerHeight * imageRatio;
+      offsetX = (containerWidth - displayWidth) / 2;
+      offsetY = 0;
+    } else {
+      displayWidth = containerWidth;
+      displayHeight = containerWidth / imageRatio;
+      offsetX = 0;
+      offsetY = (containerHeight - displayHeight) / 2;
+    }
 
-    const offsetX = (rect.width - imageDimensions.width / scale) / 2;
-    const offsetY = (rect.height - imageDimensions.height / scale) / 2;
+    const scale = imageDimensions.width / displayWidth;
 
-    const screenX = cropRect.x * scale + offsetX;
-    const screenY = cropRect.y * scale + offsetY;
-    const screenWidth = cropRect.width * scale;
-    const screenHeight = cropRect.height * scale;
+    const screenX = cropRect.x / scale + offsetX;
+    const screenY = cropRect.y / scale + offsetY;
+    const screenWidth = cropRect.width / scale;
+    const screenHeight = cropRect.height / scale;
 
     return (
       <div
@@ -1378,21 +1535,19 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           right: 0,
           bottom: 0,
           cursor: "move",
+          touchAction: "none",
         }}
         onMouseDown={(e) => {
-          const startX = e.clientX || (e.touches && e.touches[0].clientX);
-          const startY = e.clientY || (e.touches && e.touches[0].clientY);
+          if (isMobile()) return;
+          const startX = e.clientX;
+          const startY = e.clientY;
           const startCrop = { ...cropRect };
 
           const handleMouseMove = (moveEvent) => {
-            const moveX =
-              moveEvent.clientX ||
-              (moveEvent.touches && moveEvent.touches[0].clientX);
-            const moveY =
-              moveEvent.clientY ||
-              (moveEvent.touches && moveEvent.touches[0].clientY);
-            const deltaX = (moveX - startX) / scale;
-            const deltaY = (moveY - startY) / scale;
+            const moveX = moveEvent.clientX;
+            const moveY = moveEvent.clientY;
+            const deltaX = (moveX - startX) * scale;
+            const deltaY = (moveY - startY) * scale;
 
             setCropRect({
               x: Math.max(
@@ -1416,17 +1571,54 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
           const handleMouseUp = () => {
             document.removeEventListener("mousemove", handleMouseMove);
-            document.removeEventListener("touchmove", handleMouseMove);
             document.removeEventListener("mouseup", handleMouseUp);
-            document.removeEventListener("touchend", handleMouseUp);
           };
 
           document.addEventListener("mousemove", handleMouseMove);
-          document.addEventListener("touchmove", handleMouseMove, {
-            passive: false,
-          });
           document.addEventListener("mouseup", handleMouseUp);
-          document.addEventListener("touchend", handleMouseUp);
+        }}
+        onTouchStart={(e) => {
+          e.preventDefault();
+          const touch = e.touches[0];
+          const startX = touch.clientX;
+          const startY = touch.clientY;
+          const startCrop = { ...cropRect };
+
+          const handleTouchMove = (moveEvent) => {
+            moveEvent.preventDefault();
+            const touch = moveEvent.touches[0];
+            const moveX = touch.clientX;
+            const moveY = touch.clientY;
+            const deltaX = (moveX - startX) * scale;
+            const deltaY = (moveY - startY) * scale;
+
+            setCropRect({
+              x: Math.max(
+                0,
+                Math.min(
+                  imageDimensions.width - startCrop.width,
+                  startCrop.x + deltaX,
+                ),
+              ),
+              y: Math.max(
+                0,
+                Math.min(
+                  imageDimensions.height - startCrop.height,
+                  startCrop.y + deltaY,
+                ),
+              ),
+              width: startCrop.width,
+              height: startCrop.height,
+            });
+          };
+
+          const handleTouchEnd = () => {
+            document.removeEventListener("touchmove", handleTouchMove);
+            document.removeEventListener("touchend", handleTouchEnd);
+          };
+
+          document.addEventListener("touchmove", handleTouchMove, { passive: false });
+          document.addEventListener("touchend", handleTouchEnd);
         }}
       >
         <div
@@ -1460,6 +1652,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               backgroundColor: "white",
               border: "2px solid #10b981",
               borderRadius: "4px",
+              touchAction: "none",
             };
 
             if (corner === "nw") {
@@ -1485,22 +1678,17 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 key={corner}
                 style={style}
                 onMouseDown={(e) => {
+                  if (isMobile()) return;
                   e.stopPropagation();
-                  const startX =
-                    e.clientX || (e.touches && e.touches[0].clientX);
-                  const startY =
-                    e.clientY || (e.touches && e.touches[0].clientY);
+                  const startX = e.clientX;
+                  const startY = e.clientY;
                   const startCrop = { ...cropRect };
 
                   const handleMouseMove = (moveEvent) => {
-                    const moveX =
-                      moveEvent.clientX ||
-                      (moveEvent.touches && moveEvent.touches[0].clientX);
-                    const moveY =
-                      moveEvent.clientY ||
-                      (moveEvent.touches && moveEvent.touches[0].clientY);
-                    const deltaX = (moveX - startX) / scale;
-                    const deltaY = (moveY - startY) / scale;
+                    const moveX = moveEvent.clientX;
+                    const moveY = moveEvent.clientY;
+                    const deltaX = (moveX - startX) * scale;
+                    const deltaY = (moveY - startY) * scale;
 
                     let newWidth = startCrop.width;
                     let newHeight = startCrop.height;
@@ -1541,17 +1729,71 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
                   const handleMouseUp = () => {
                     document.removeEventListener("mousemove", handleMouseMove);
-                    document.removeEventListener("touchmove", handleMouseMove);
                     document.removeEventListener("mouseup", handleMouseUp);
-                    document.removeEventListener("touchend", handleMouseUp);
                   };
 
                   document.addEventListener("mousemove", handleMouseMove);
-                  document.addEventListener("touchmove", handleMouseMove, {
-                    passive: false,
-                  });
                   document.addEventListener("mouseup", handleMouseUp);
-                  document.addEventListener("touchend", handleMouseUp);
+                }}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  const touch = e.touches[0];
+                  const startX = touch.clientX;
+                  const startY = touch.clientY;
+                  const startCrop = { ...cropRect };
+
+                  const handleTouchMove = (moveEvent) => {
+                    moveEvent.preventDefault();
+                    const touch = moveEvent.touches[0];
+                    const moveX = touch.clientX;
+                    const moveY = touch.clientY;
+                    const deltaX = (moveX - startX) * scale;
+                    const deltaY = (moveY - startY) * scale;
+
+                    let newWidth = startCrop.width;
+                    let newHeight = startCrop.height;
+                    let newX = startCrop.x;
+                    let newY = startCrop.y;
+
+                    if (corner === "nw") {
+                      newWidth = Math.max(100, startCrop.width - deltaX);
+                      newHeight = Math.max(100, startCrop.height - deltaY);
+                      newX = startCrop.x + deltaX;
+                      newY = startCrop.y + deltaY;
+                    } else if (corner === "ne") {
+                      newWidth = Math.max(100, startCrop.width + deltaX);
+                      newHeight = Math.max(100, startCrop.height - deltaY);
+                      newY = startCrop.y + deltaY;
+                    } else if (corner === "sw") {
+                      newWidth = Math.max(100, startCrop.width - deltaX);
+                      newHeight = Math.max(100, startCrop.height + deltaY);
+                      newX = startCrop.x + deltaX;
+                    } else if (corner === "se") {
+                      newWidth = Math.max(100, startCrop.width + deltaX);
+                      newHeight = Math.max(100, startCrop.height + deltaY);
+                    }
+
+                    setCropRect({
+                      x: Math.max(
+                        0,
+                        Math.min(imageDimensions.width - newWidth, newX),
+                      ),
+                      y: Math.max(
+                        0,
+                        Math.min(imageDimensions.height - newHeight, newY),
+                      ),
+                      width: newWidth,
+                      height: newHeight,
+                    });
+                  };
+
+                  const handleTouchEnd = () => {
+                    document.removeEventListener("touchmove", handleTouchMove);
+                    document.removeEventListener("touchend", handleTouchEnd);
+                  };
+
+                  document.addEventListener("touchmove", handleTouchMove, { passive: false });
+                  document.addEventListener("touchend", handleTouchEnd);
                 }}
               />
             );
@@ -1601,15 +1843,17 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         alignItems: "center",
         justifyContent: "center",
         zIndex: 20000,
+        overflow: "hidden",
+        touchAction: "none",
       }}
-      onClick={() => {
-        if (!isCropping && !textPosition && !processingImage) {
+      onClick={(e) => {
+        if (!isCropping && !textPosition && !processingImage && e.target === e.currentTarget) {
           resetStates();
           onClose();
         }
       }}
     >
-      {/* Hidden file inputs for Android native camera */}
+      {/* Hidden file inputs */}
       <input
         ref={photoInputRef}
         type="file"
@@ -1632,10 +1876,13 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           backgroundColor: "#1f2937",
           borderRadius: "0.75rem",
           maxHeight: "95vh",
-          overflow: "auto",
+          overflow: "hidden",
           width: "95vw",
           maxWidth: "800px",
           zIndex: 20001,
+          display: "flex",
+          flexDirection: "column",
+          touchAction: "none",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1647,6 +1894,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             alignItems: "center",
             padding: "1rem",
             borderBottom: "1px solid #374151",
+            flexShrink: 0,
           }}
         >
           <h3
@@ -1710,9 +1958,11 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         <div
           style={{
             padding: "1rem",
-            minHeight: "400px",
+            flex: 1,
             display: "flex",
             flexDirection: "column",
+            overflow: "hidden",
+            minHeight: 0,
           }}
         >
           {processingImage ? (
@@ -1723,7 +1973,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 overflow: "hidden",
                 backgroundColor: "#000",
                 marginBottom: "1rem",
-                minHeight: "300px",
+                flex: 1,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1754,16 +2004,20 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               style={{
                 position: "relative",
                 width: "100%",
-                height: "50vh",
-                minHeight: "300px",
+                flex: 1,
                 borderRadius: "8px",
                 overflow: "hidden",
                 backgroundColor: "#000",
                 marginBottom: "1rem",
+                minHeight: 0,
+                touchAction: editorMode === "draw" ? "none" : "auto",
               }}
-              onMouseDown={editorMode === "draw" ? handleMouseDown : undefined}
-              onMouseMove={editorMode === "draw" ? handleMouseMove : undefined}
-              onMouseUp={editorMode === "draw" ? handleMouseUp : undefined}
+              onMouseDown={editorMode === "draw" && !isMobile() ? handleMouseDown : undefined}
+              onMouseMove={editorMode === "draw" && !isMobile() ? handleMouseMove : undefined}
+              onMouseUp={editorMode === "draw" && !isMobile() ? handleMouseUp : undefined}
+              onTouchStart={editorMode === "draw" && isMobile() ? handleTouchStart : undefined}
+              onTouchMove={editorMode === "draw" && isMobile() ? handleTouchMove : undefined}
+              onTouchEnd={editorMode === "draw" && isMobile() ? handleTouchEnd : undefined}
               onClick={editorMode === "draw" && drawTool === "text" ? (e) => {
                 const coords = getCanvasCoordinates(e);
                 setTextPosition(coords);
@@ -1828,6 +2082,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     width: "100%",
                     height: "100%",
                     cursor: drawTool === "text" ? "text" : "crosshair",
+                    touchAction: "none",
                   }}
                 />
               )}
@@ -1930,7 +2185,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 overflow: "hidden",
                 backgroundColor: "#000",
                 marginBottom: "1rem",
-                minHeight: "300px",
+                flex: 1,
               }}
             >
               <video
@@ -1938,8 +2193,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 controls
                 style={{
                   width: "100%",
-                  height: "auto",
-                  maxHeight: "50vh",
+                  height: "100%",
                   objectFit: "contain",
                   display: "block",
                 }}
@@ -1953,7 +2207,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 overflow: "hidden",
                 backgroundColor: "#000",
                 marginBottom: "1rem",
-                minHeight: "300px",
+                flex: 1,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
@@ -1970,11 +2224,11 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               >
                 <MdCamera size={48} style={{ marginBottom: "1rem" }} />
                 <h3 style={{ marginBottom: "0.5rem" }}>
-                  {isAndroid() ? "Android Camera" : "Camera Access"}
+                  {isMobile() ? "Device Camera" : "Camera Access"}
                 </h3>
                 <p style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
-                  {isAndroid() && isPWA()
-                    ? "Using Android's native camera for best compatibility"
+                  {isMobile() && isPWA()
+                    ? "Using device's native camera for best compatibility"
                     : "Take a photo using your device's camera"}
                 </p>
               </div>
@@ -2105,7 +2359,8 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 overflow: "hidden",
                 backgroundColor: "#000",
                 marginBottom: "1rem",
-                minHeight: "300px",
+                flex: 1,
+                minHeight: 0,
               }}
             >
               {cameraError && (
@@ -2135,7 +2390,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     {cameraError}
                   </p>
 
-                  {isAndroid() && (
+                  {isMobile() && (
                     <div
                       style={{
                         display: "flex",
@@ -2190,8 +2445,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 muted={mode === "video"}
                 style={{
                   width: "100%",
-                  height: "auto",
-                  maxHeight: "50vh",
+                  height: "100%",
                   objectFit: "contain",
                   display: "block",
                   transform: cameraType === "user" ? "scaleX(-1)" : "none",
@@ -2326,6 +2580,9 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               padding: "1rem",
               borderTop: "1px solid #374151",
               backgroundColor: "#111827",
+              flexShrink: 0,
+              overflow: "auto",
+              maxHeight: "40vh",
             }}
           >
             <div
@@ -2754,6 +3011,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             style={{
               padding: "1rem",
               borderTop: "1px solid #374151",
+              flexShrink: 0,
             }}
           >
             <div
@@ -2794,6 +3052,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             style={{
               padding: "1rem",
               borderTop: "1px solid #374151",
+              flexShrink: 0,
             }}
           >
             <div
@@ -2834,6 +3093,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
             style={{
               padding: "1rem",
               borderTop: "1px solid #374151",
+              flexShrink: 0,
             }}
           >
             <button
@@ -2860,6 +3120,25 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: #10b981;
+          cursor: pointer;
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: #10b981;
+          cursor: pointer;
+          border: none;
         }
       `}</style>
     </div>
