@@ -18,7 +18,6 @@ import {
   MdCircle,
   MdSquare,
   MdDelete,
-  MdFilterAlt,
 } from "react-icons/md";
 import { FaArrowRight } from "react-icons/fa";
 import { Link } from "react-router-dom";
@@ -419,7 +418,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const mediaRecorderRef = useRef(null);
   const photoInputRef = useRef(null);
   const videoInputRef = useRef(null);
-
+  
   const [stream, setStream] = useState(null);
   const [devices, setDevices] = useState([]);
   const [imageToEdit, setImageToEdit] = useState(null);
@@ -472,11 +471,9 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
   // Check if PWA installed
   const isPWA = () => {
-    return (
-      window.matchMedia("(display-mode: standalone)").matches ||
-      window.navigator.standalone === true ||
-      document.referrer.includes("android-app://")
-    );
+    return window.matchMedia('(display-mode: standalone)').matches || 
+           window.navigator.standalone === true ||
+           document.referrer.includes('android-app://');
   };
 
   useEffect(() => {
@@ -524,22 +521,17 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
   // Calculate display scale and offset when image dimensions change
   useEffect(() => {
-    if (
-      !containerRef.current ||
-      !imageDimensions.width ||
-      !imageDimensions.height
-    )
-      return;
-
+    if (!containerRef.current || !imageDimensions.width || !imageDimensions.height) return;
+    
     const container = containerRef.current;
     const containerRect = container.getBoundingClientRect();
-
+    
     // Calculate the scale to fit image in container while maintaining aspect ratio
     const containerAspect = containerRect.width / containerRect.height;
     const imageAspect = imageDimensions.width / imageDimensions.height;
-
+    
     let displayWidth, displayHeight, offsetX, offsetY;
-
+    
     if (containerAspect > imageAspect) {
       // Container is wider than image (letterboxing on sides)
       displayHeight = containerRect.height;
@@ -553,22 +545,19 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       offsetX = 0;
       offsetY = (containerRect.height - displayHeight) / 2;
     }
-
+    
     const scale = displayWidth / imageDimensions.width;
     setDisplayScale(scale);
     setDisplayOffset({ x: offsetX, y: offsetY });
-
+    
     // Initialize drawing canvas with correct dimensions
-    if (
-      drawingCanvasRef.current &&
-      imageDimensions.width &&
-      imageDimensions.height
-    ) {
+    if (drawingCanvasRef.current && imageDimensions.width && imageDimensions.height) {
       drawingCanvasRef.current.width = imageDimensions.width;
       drawingCanvasRef.current.height = imageDimensions.height;
       // Redraw elements when canvas is resized
       renderDrawing();
     }
+    
   }, [imageDimensions, containerRef.current]);
 
   // FIX: Initialize drawing canvas when image loads and preserve drawings when switching modes
@@ -578,13 +567,13 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       img.onload = () => {
         const canvas = drawingCanvasRef.current;
         if (!canvas) return;
-
+        
         // Only reset canvas dimensions if they don't match
         if (canvas.width !== img.width || canvas.height !== img.height) {
           canvas.width = img.width;
           canvas.height = img.height;
         }
-
+        
         // Always render drawings when image loads
         renderDrawing();
       };
@@ -600,13 +589,13 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       img.onload = () => {
         const canvas = drawingCanvasRef.current;
         if (!canvas) return;
-
+        
         // Set canvas dimensions to match image
         if (canvas.width !== img.width || canvas.height !== img.height) {
           canvas.width = img.width;
           canvas.height = img.height;
         }
-
+        
         // Clear and redraw
         renderDrawing();
       };
@@ -621,7 +610,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const initializeCamera = async () => {
     try {
       setCameraError(null);
-
+      
       const constraints = {
         video: {
           facingMode: {
@@ -672,12 +661,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     } catch (err) {
       console.error("Camera initialization error:", err);
       setCameraError(err.message || "Cannot access camera");
-
+      
       // For Android, suggest using native camera
       if (isAndroid()) {
-        setCameraError(
-          "Direct camera access failed. Please use native camera.",
-        );
+        setCameraError("Direct camera access failed. Please use native camera.");
         setCameraAccessMethod("native");
       }
     }
@@ -877,7 +864,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     }
 
     const dataUrl = canvas.toDataURL("image/png", 0.9);
-
+    
     setImageToEdit(dataUrl);
     const img = new Image();
     img.onload = () => {
@@ -895,10 +882,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     if (!file) return;
 
     // Reset input for Android compatibility
-    e.target.value = "";
+    e.target.value = '';
 
     setProcessingImage(true);
-
+    
     const reader = new FileReader();
     reader.onload = (ev) => {
       if (inputType === "photo") {
@@ -958,10 +945,8 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     const container = containerRef.current;
     const rect = container.getBoundingClientRect();
 
-    const clientX =
-      event.clientX || (event.touches && event.touches[0].clientX);
-    const clientY =
-      event.clientY || (event.touches && event.touches[0].clientY);
+    const clientX = event.clientX || (event.touches && event.touches[0].clientX);
+    const clientY = event.clientY || (event.touches && event.touches[0].clientY);
 
     if (!clientX || !clientY) return { x: 0, y: 0 };
 
@@ -976,7 +961,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     // Ensure coordinates are within image bounds
     return {
       x: Math.max(0, Math.min(imageDimensions.width, canvasX)),
-      y: Math.max(0, Math.min(imageDimensions.height, canvasY)),
+      y: Math.max(0, Math.min(imageDimensions.height, canvasY))
     };
   };
 
@@ -1004,7 +989,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     }
 
     setIsDrawing(true);
-
+    
     if (drawTool === "pen") {
       setTempElement({
         type: "pen",
@@ -1104,25 +1089,19 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
   // Handle touch events for mobile
   const handleTouchStart = (e) => {
-  if (editorMode !== "draw") return;
-    if (drawTool !== "text" || textPosition) {
     e.preventDefault();
-  }
-  handleMouseDown(e);
-};
+    handleMouseDown(e);
+  };
 
   const handleTouchMove = (e) => {
-  if (editorMode !== "draw") return;
-    if (isDrawing || isDraggingElement) {
     e.preventDefault();
-  }
-  handleMouseMove(e);
-};
+    handleMouseMove(e);
+  };
 
   const handleTouchEnd = (e) => {
-  if (editorMode !== "draw") return;
+    e.preventDefault();
     handleMouseUp();
-};
+  };
 
   const findElementAtPosition = (x, y) => {
     for (const element of elements) {
@@ -1200,24 +1179,25 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   };
 
   const handleTextSubmit = () => {
-  if (!textInput || !textPosition) return;
+    if (!textInput || !textPosition) return;
 
-  const newElement = {
-    id: Date.now() + Math.random(),
-    type: "text",
-    color: drawColor,
-    text: textInput,
-    x: textPosition.x,
-    y: textPosition.y,
-    fontSize: 32,
+    const newElement = {
+      id: Date.now() + Math.random(),
+      type: "text",
+      color: drawColor,
+      text: textInput,
+      x: textPosition.x,
+      y: textPosition.y,
+      fontSize: 32,
+    };
+
+    setElements([...elements, newElement]);
+    saveDrawingState();
+
+    setTextInput("");
+    setTextPosition(null);
+    renderDrawing();
   };
-
-  setElements([...elements, newElement]);
-  saveDrawingState();
-  setTextInput("");
-  setTextPosition(null);
-  renderDrawing();
-};
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && textInput.trim()) {
@@ -1416,82 +1396,69 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
   const handleSaveImage = async () => {
     if (!imageToEdit && !preview) return;
-
+    
     const imageSource = imageToEdit || preview;
-
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-
+    
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
     const img = new Image();
     img.src = imageSource;
-
+    
     await new Promise((resolve) => {
       img.onload = () => {
         canvas.width = isCropping ? cropRect.width : img.width;
         canvas.height = isCropping ? cropRect.height : img.height;
-
+        
         if (rotation !== 0) {
           ctx.save();
           ctx.translate(canvas.width / 2, canvas.height / 2);
-          ctx.rotate((rotation * Math.PI) / 180);
+          ctx.rotate(rotation * Math.PI / 180);
           ctx.translate(-canvas.width / 2, -canvas.height / 2);
         }
-
+        
         if (isCropping) {
           ctx.drawImage(
             img,
-            cropRect.x,
-            cropRect.y,
-            cropRect.width,
-            cropRect.height,
-            0,
-            0,
-            canvas.width,
-            canvas.height,
+            cropRect.x, cropRect.y, cropRect.width, cropRect.height,
+            0, 0, canvas.width, canvas.height
           );
         } else {
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         }
-
+        
         if (rotation !== 0) {
           ctx.restore();
         }
-
+        
         ctx.filter = `brightness(${brightness}%)`;
-        ctx.globalCompositeOperation = "source-over";
+        ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(canvas, 0, 0);
-
-        if (editorMode === "draw" && drawingCanvasRef.current) {
+        
+        if (editorMode === 'draw' && drawingCanvasRef.current) {
           const drawCanvas = drawingCanvasRef.current;
-          const tempCanvas = document.createElement("canvas");
-          const tempCtx = tempCanvas.getContext("2d");
+          const tempCanvas = document.createElement('canvas');
+          const tempCtx = tempCanvas.getContext('2d');
           tempCanvas.width = drawCanvas.width;
           tempCanvas.height = drawCanvas.height;
-
+          
           tempCtx.drawImage(drawCanvas, 0, 0);
-
+          
           ctx.drawImage(
             tempCanvas,
             isCropping ? cropRect.x : 0,
             isCropping ? cropRect.y : 0,
             isCropping ? cropRect.width : canvas.width,
             isCropping ? cropRect.height : canvas.height,
-            0,
-            0,
-            canvas.width,
-            canvas.height,
+            0, 0, canvas.width, canvas.height
           );
         }
-
-        canvas.toBlob(
-          (blob) => {
-            const url = URL.createObjectURL(blob);
-            onImageCaptured(url);
-            onClose();
-          },
-          "image/png",
-          0.9,
-        );
+        
+        canvas.toBlob((blob) => {
+          const url = URL.createObjectURL(blob);
+          onImageCaptured(url);
+          onClose();
+        }, 'image/png', 0.9);
         resolve();
       };
     });
@@ -1510,11 +1477,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
   // FIXED: Correct crop overlay rendering with proper coordinate conversion
   const renderCropOverlay = () => {
-    if (!containerRef.current || !imageDimensions.width || !isCropping)
-      return null;
+    if (!containerRef.current || !imageDimensions.width || !isCropping) return null;
 
     const rect = containerRef.current.getBoundingClientRect();
-
+    
     // Calculate crop rectangle position on screen using display scale and offset
     const screenX = cropRect.x * displayScale + displayOffset.x;
     const screenY = cropRect.y * displayScale + displayOffset.y;
@@ -1644,8 +1610,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               style={style}
               onMouseDown={(e) => {
                 e.stopPropagation();
-                const startX = e.clientX || (e.touches && e.touches[0].clientX);
-                const startY = e.clientY || (e.touches && e.touches[0].clientY);
+                const startX =
+                  e.clientX || (e.touches && e.touches[0].clientX);
+                const startY =
+                  e.clientY || (e.touches && e.touches[0].clientY);
                 const startCrop = { ...cropRect };
 
                 const handleMouseMove = (moveEvent) => {
@@ -1739,7 +1707,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     setProcessingImage(false);
     setDisplayScale(1);
     setDisplayOffset({ x: 0, y: 0 });
-
+    
     stopCamera();
   };
 
@@ -1789,12 +1757,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           backgroundColor: "#1f2937",
           borderRadius: "0.75rem",
           maxHeight: "95vh",
-          overflow: "hidden",
           overflow: "auto",
           width: "95vw",
           maxWidth: "800px",
           zIndex: 20001,
-          flexDirection: "column",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1868,10 +1834,8 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         {/* Main Content Area */}
         <div
           style={{
-            flex: 1,
-            overflow: "auto", // Allow image area to scroll if needed
             padding: "1rem",
-            minHeight: "300px",
+            minHeight: "400px",
             display: "flex",
             flexDirection: "column",
           }}
@@ -1882,7 +1846,6 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 position: "relative",
                 borderRadius: "8px",
                 overflow: "hidden",
-                overflow: "auto",
                 backgroundColor: "#000",
                 marginBottom: "1rem",
                 minHeight: "300px",
@@ -1928,20 +1891,14 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
               onMouseDown={editorMode === "draw" ? handleMouseDown : undefined}
               onMouseMove={editorMode === "draw" ? handleMouseMove : undefined}
               onMouseUp={editorMode === "draw" ? handleMouseUp : undefined}
-              onTouchStart={
-                editorMode === "draw" ? handleTouchStart : undefined
-              }
+              onTouchStart={editorMode === "draw" ? handleTouchStart : undefined}
               onTouchMove={editorMode === "draw" ? handleTouchMove : undefined}
               onTouchEnd={editorMode === "draw" ? handleTouchEnd : undefined}
-              onClick={
-                editorMode === "draw" && drawTool === "text"
-                  ? (e) => {
-                      const coords = getCanvasCoordinates(e);
-                      setTextPosition(coords);
-                      setSelectedElement(null);
-                    }
-                  : undefined
-              }
+              onClick={editorMode === "draw" && drawTool === "text" ? (e) => {
+                const coords = getCanvasCoordinates(e);
+                setTextPosition(coords);
+                setSelectedElement(null);
+              } : undefined}
             >
               <img
                 src={imageToEdit || preview}
@@ -2007,101 +1964,95 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 />
               )}
 
-             {textPosition && (
-  <div
-    style={{
-      position: "absolute",
-      top: "50%",
-      left: "50%",
-      transform: "translate(-50%, -50%)",
-      backgroundColor: "rgba(0, 0, 0, 0.85)",
-      padding: "1rem",
-      borderRadius: "0.5rem",
-      display: "flex",
-      flexDirection: "column",
-      gap: "0.5rem",
-      minWidth: "300px",
-      width: "80%",
-      maxWidth: "400px",
-      zIndex: 100,
-    }}
-    onClick={(e) => e.stopPropagation()} // This prevents clicks inside from bubbling up
-  >
-    <span
-      style={{
-        color: "white",
-        fontWeight: "600",
-        fontSize: "1rem",
-        marginBottom: "0.5rem",
-      }}
-    >
-      Add Text
-    </span>
-    <input
-      type="text"
-      value={textInput}
-      onChange={(e) => setTextInput(e.target.value)}
-      placeholder="Type text and press Enter..."
-      autoFocus
-      style={{
-        padding: "0.75rem",
-        borderRadius: "0.25rem",
-        border: "1px solid #4b5563",
-        backgroundColor: "rgba(255, 255, 255, 0.1)",
-        color: "white",
-        fontSize: "1rem",
-      }}
-      onKeyPress={handleKeyPress}
-      onClick={(e) => e.stopPropagation()} // Prevent clicks on input
-    />
-    <div
-      style={{
-        display: "flex",
-        gap: "0.5rem",
-        justifyContent: "flex-end",
-        marginTop: "0.5rem",
-      }}
-    >
-      <button
-        onClick={(e) => {
-          e.stopPropagation(); // Prevent event bubbling
-          setTextPosition(null);
-          setTextInput("");
-        }}
-        style={{
-          padding: "0.75rem 1.5rem",
-          backgroundColor: "rgba(107, 114, 128, 0.5)",
-          color: "white",
-          border: "none",
-          borderRadius: "0.25rem",
-          cursor: "pointer",
-          fontSize: "0.9rem",
-        }}
-      >
-        Cancel
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation(); // Prevent event bubbling
-          handleTextSubmit();
-        }}
-        disabled={!textInput.trim()}
-        style={{
-          padding: "0.75rem 1.5rem",
-          backgroundColor: textInput.trim() ? "#10b981" : "#4b5563",
-          color: "white",
-          border: "none",
-          borderRadius: "0.25rem",
-          cursor: textInput.trim() ? "pointer" : "not-allowed",
-          fontSize: "0.9rem",
-          opacity: textInput.trim() ? 1 : 0.5,
-        }}
-      >
-        Add
-      </button>
-    </div>
-  </div>
-)}
+              {textPosition && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    backgroundColor: "rgba(0, 0, 0, 0.85)",
+                    padding: "1rem",
+                    borderRadius: "0.5rem",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.5rem",
+                    minWidth: "300px",
+                    width: "80%",
+                    maxWidth: "400px",
+                    zIndex: 100,
+                  }}
+                >
+                  <span
+                    style={{
+                      color: "white",
+                      fontWeight: "600",
+                      fontSize: "1rem",
+                      marginBottom: "0.5rem",
+                    }}
+                  >
+                    Add Text
+                  </span>
+                  <input
+                    type="text"
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                    placeholder="Type text and press Enter..."
+                    autoFocus
+                    style={{
+                      padding: "0.75rem",
+                      borderRadius: "0.25rem",
+                      border: "1px solid #4b5563",
+                      backgroundColor: "rgba(255, 255, 255, 0.1)",
+                      color: "white",
+                      fontSize: "1rem",
+                    }}
+                    onKeyPress={handleKeyPress}
+                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "0.5rem",
+                      justifyContent: "flex-end",
+                      marginTop: "0.5rem",
+                    }}
+                  >
+                    <button
+                      onClick={() => {
+                        setTextPosition(null);
+                        setTextInput("");
+                      }}
+                      style={{
+                        padding: "0.75rem 1.5rem",
+                        backgroundColor: "rgba(107, 114, 128, 0.5)",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "0.25rem",
+                        cursor: "pointer",
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleTextSubmit}
+                      disabled={!textInput.trim()}
+                      style={{
+                        padding: "0.75rem 1.5rem",
+                        backgroundColor: textInput.trim() ? "#10b981" : "#4b5563",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "0.25rem",
+                        cursor: textInput.trim() ? "pointer" : "not-allowed",
+                        fontSize: "0.9rem",
+                        opacity: textInput.trim() ? 1 : 0.5,
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : mode === "video" && preview ? (
             <div
@@ -2225,9 +2176,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     width: "100%",
                   }}
                 >
-                  <p
-                    style={{ color: "#ef4444", fontSize: "0.9rem", margin: 0 }}
-                  >
+                  <p style={{ color: "#ef4444", fontSize: "0.9rem", margin: 0 }}>
                     {cameraError}
                   </p>
                 </div>
@@ -2503,297 +2452,302 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         </div>
 
         {/* Editor Controls */}
-        {/* Editor Controls */}
         {(isCropping || (mode === "photo" && preview)) && (
           <div
             style={{
-              backgroundColor: "#111827",
+              padding: "1rem",
               borderTop: "1px solid #374151",
-              padding: "0.75rem",
-              flexShrink: 0, // Prevent shrinking
+              backgroundColor: "#111827",
             }}
           >
-            {/* Compact Mode Selection */}
             <div
               style={{
                 display: "flex",
-                justifyContent: "space-between",
-                gap: "0.375rem",
-                marginBottom: "0.75rem",
+                justifyContent: "center",
+                gap: "0.5rem",
+                marginBottom: "1rem",
+                flexWrap: "wrap",
               }}
             >
               <button
                 onClick={() => setEditorMode("crop")}
                 style={{
-                  flex: 1,
-                  padding: "0.625rem 0.25rem",
+                  padding: "0.75rem 1rem",
                   backgroundColor:
                     editorMode === "crop" ? "#10b981" : "#374151",
                   color: "white",
                   border: "none",
                   borderRadius: "6px",
-                  fontSize: "0.75rem",
+                  fontSize: "0.9rem",
                   cursor: "pointer",
                   display: "flex",
-                  flexDirection: "column",
                   alignItems: "center",
-                  gap: "0.25rem",
-                  minHeight: "52px",
+                  gap: "0.5rem",
+                  transition: "all 0.2s ease",
+                  minWidth: "100px",
                 }}
               >
-                <MdCrop size={16} />
+                <MdCrop size={18} />
                 Crop
               </button>
 
               <button
                 onClick={() => setEditorMode("draw")}
                 style={{
-                  flex: 1,
-                  padding: "0.625rem 0.25rem",
+                  padding: "0.75rem 1rem",
                   backgroundColor:
                     editorMode === "draw" ? "#10b981" : "#374151",
                   color: "white",
                   border: "none",
                   borderRadius: "6px",
-                  fontSize: "0.75rem",
+                  fontSize: "0.9rem",
                   cursor: "pointer",
                   display: "flex",
-                  flexDirection: "column",
                   alignItems: "center",
-                  gap: "0.25rem",
-                  minHeight: "52px",
+                  gap: "0.5rem",
+                  transition: "all 0.2s ease",
+                  minWidth: "100px",
                 }}
               >
-                <MdBrush size={16} />
+                <MdBrush size={18} />
                 Draw
               </button>
 
               <button
                 onClick={() => setEditorMode("filter")}
                 style={{
-                  flex: 1,
-                  padding: "0.625rem 0.25rem",
+                  padding: "0.75rem 1rem",
                   backgroundColor:
                     editorMode === "filter" ? "#10b981" : "#374151",
                   color: "white",
                   border: "none",
                   borderRadius: "6px",
-                  fontSize: "0.75rem",
+                  fontSize: "0.9rem",
                   cursor: "pointer",
                   display: "flex",
-                  flexDirection: "column",
                   alignItems: "center",
-                  gap: "0.25rem",
-                  minHeight: "52px",
+                  gap: "0.5rem",
+                  transition: "all 0.2s ease",
+                  minWidth: "100px",
                 }}
               >
-                <MdFilterAlt size={16} />
                 Filter
               </button>
             </div>
 
-            {/* Drawing Tools */}
             {editorMode === "draw" && (
               <div
                 style={{
-                  backgroundColor: "#1f2937",
-                  borderRadius: "8px",
-                  padding: "0.75rem",
-                  marginBottom: "0.75rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.75rem",
+                  marginBottom: "1rem",
                 }}
               >
                 <div
                   style={{
                     display: "flex",
-                    gap: "0.375rem",
-                    marginBottom: "0.75rem",
+                    gap: "0.5rem",
+                    justifyContent: "center",
+                    flexWrap: "wrap",
                   }}
                 >
-                  {[
-                    { id: "pen", icon: <MdBrush size={14} />, label: "Pen" },
-                    {
-                      id: "arrow",
-                      icon: <FaArrowRight size={12} />,
-                      label: "Arrow",
-                    },
-                    {
-                      id: "circle",
-                      icon: <MdCircle size={14} />,
-                      label: "Circle",
-                    },
-                    {
-                      id: "square",
-                      icon: <MdSquare size={14} />,
-                      label: "Square",
-                    },
-                    {
-                      id: "text",
-                      icon: <MdTextFields size={14} />,
-                      label: "Text",
-                    },
-                  ].map((tool) => (
-                    <button
-                      key={tool.id}
-                      onClick={() => setDrawTool(tool.id)}
-                      style={{
-                        flex: 1,
-                        padding: "0.5rem 0.25rem",
-                        backgroundColor:
-                          drawTool === tool.id ? "#10b981" : "#374151",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "6px",
-                        cursor: "pointer",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: "0.125rem",
-                        fontSize: "0.65rem",
-                        minHeight: "44px",
-                      }}
-                    >
-                      {tool.icon}
-                      {tool.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div
-                  style={{
-                    marginBottom: "0.75rem",
-                    padding: "0.5rem",
-                    backgroundColor: "#374151",
-                    borderRadius: "6px",
-                  }}
-                >
-                  <div
+                  <button
+                    onClick={() => setDrawTool("pen")}
                     style={{
+                      padding: "0.75rem",
+                      backgroundColor:
+                        drawTool === "pen" ? "#10b981" : "#374151",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "0.5rem",
+                      cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      gap: "0.5rem",
-                      marginBottom: "0.5rem",
+                      gap: "0.25rem",
+                      minWidth: "60px",
                     }}
                   >
-                    <span
-                      style={{
-                        color: "#d1d5db",
-                        fontSize: "0.75rem",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      Color:
-                    </span>
-                    <div
-                      style={{
-                        flex: 1,
-                        display: "flex",
-                        gap: "0.375rem",
-                        justifyContent: "space-between",
-                        overflowX: "auto",
-                        padding: "0.125rem 0",
-                        scrollbarWidth: "none",
-                        msOverflowStyle: "none",
-                      }}
-                    >
-                      {[
-                        "#ff0000",
-                        "#00ff00",
-                        "#0000ff",
-                        "#ffff00",
-                        "#ff00ff",
-                        "#ffffff",
-                        "#000000",
-                      ].map((color) => (
-                        <button
-                          key={color}
-                          onClick={() => setDrawColor(color)}
-                          style={{
-                            width: "22px",
-                            height: "22px",
-                            backgroundColor: color,
-                            border:
-                              drawColor === color
-                                ? "2px solid #10b981"
-                                : "1px solid #4b5563",
-                            borderRadius: "50%",
-                            cursor: "pointer",
-                            flexShrink: 0,
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
+                    <MdBrush size={22} />
+                  </button>
+                  <button
+                    onClick={() => setDrawTool("arrow")}
+                    style={{
+                      padding: "0.75rem",
+                      backgroundColor:
+                        drawTool === "arrow" ? "#10b981" : "#374151",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "0.5rem",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      minWidth: "60px",
+                    }}
+                  >
+                    <FaArrowRight size={20} />
+                  </button>
+                  <button
+                    onClick={() => setDrawTool("circle")}
+                    style={{
+                      padding: "0.75rem",
+                      backgroundColor:
+                        drawTool === "circle" ? "#10b981" : "#374151",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "0.5rem",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      minWidth: "60px",
+                    }}
+                  >
+                    <MdCircle size={22} />
+                  </button>
+                  <button
+                    onClick={() => setDrawTool("square")}
+                    style={{
+                      padding: "0.75rem",
+                      backgroundColor:
+                        drawTool === "square" ? "#10b981" : "#374151",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "0.5rem",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      minWidth: "60px",
+                    }}
+                  >
+                    <MdSquare size={22} />
+                  </button>
+                  <button
+                    onClick={() => setDrawTool("text")}
+                    style={{
+                      padding: "0.75rem",
+                      backgroundColor:
+                        drawTool === "text" ? "#10b981" : "#374151",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "0.5rem",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      minWidth: "60px",
+                    }}
+                  >
+                    <MdTextFields size={22} />
+                  </button>
                 </div>
 
                 <div
                   style={{
                     display: "flex",
                     gap: "0.5rem",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    marginTop: "0.5rem",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span style={{ color: "#9ca3af", fontSize: "0.9rem" }}>
+                    Color:
+                  </span>
+                  {[
+                    "#ff0000",
+                    "#00ff00",
+                    "#0000ff",
+                    "#ffff00",
+                    "#ff00ff",
+                    "#ffffff",
+                    "#000000",
+                  ].map((color) => (
+                    <button
+                      key={color}
+                      onClick={() => setDrawColor(color)}
+                      style={{
+                        width: "32px",
+                        height: "32px",
+                        backgroundColor: color,
+                        border:
+                          drawColor === color
+                            ? "3px solid #10b981"
+                            : "2px solid #6b7280",
+                        borderRadius: "50%",
+                        cursor: "pointer",
+                      }}
+                    />
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.5rem",
+                    justifyContent: "center",
                   }}
                 >
                   <button
                     onClick={handleUndo}
                     disabled={historyStep <= 0}
                     style={{
-                      flex: 1,
-                      padding: "0.5rem",
+                      padding: "0.75rem 1.5rem",
                       backgroundColor: historyStep <= 0 ? "#4b5563" : "#374151",
                       color: "white",
                       border: "none",
-                      borderRadius: "6px",
+                      borderRadius: "0.5rem",
                       cursor: historyStep <= 0 ? "not-allowed" : "pointer",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.375rem",
-                      fontSize: "0.75rem",
+                      gap: "0.5rem",
                       opacity: historyStep <= 0 ? 0.5 : 1,
+                      minWidth: "120px",
                     }}
                   >
-                    <MdUndo size={14} />
+                    <MdUndo size={22} />
                     Undo
                   </button>
-
                   <button
                     onClick={handleRedo}
                     disabled={historyStep >= drawHistory.length - 1}
                     style={{
-                      flex: 1,
-                      padding: "0.5rem",
+                      padding: "0.75rem 1.5rem",
                       backgroundColor:
                         historyStep >= drawHistory.length - 1
                           ? "#4b5563"
                           : "#374151",
                       color: "white",
                       border: "none",
-                      borderRadius: "6px",
+                      borderRadius: "0.5rem",
                       cursor:
                         historyStep >= drawHistory.length - 1
                           ? "not-allowed"
                           : "pointer",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.375rem",
-                      fontSize: "0.75rem",
+                      gap: "0.5rem",
                       opacity: historyStep >= drawHistory.length - 1 ? 0.5 : 1,
+                      minWidth: "120px",
                     }}
                   >
-                    <MdRedo size={14} />
+                    <MdRedo size={22} />
                     Redo
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Filter Section */}
             {editorMode === "filter" && (
               <div
                 style={{
-                  backgroundColor: "#1f2937",
-                  borderRadius: "8px",
-                  padding: "0.75rem",
-                  marginBottom: "0.75rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "1rem",
+                  marginBottom: "1rem",
                 }}
               >
                 <div>
@@ -2802,19 +2756,13 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
-                      marginBottom: "0.375rem",
+                      marginBottom: "0.25rem",
                     }}
                   >
-                    <span style={{ color: "#d1d5db", fontSize: "0.75rem" }}>
+                    <span style={{ color: "#9ca3af", fontSize: "0.9rem" }}>
                       Brightness
                     </span>
-                    <span
-                      style={{
-                        color: "white",
-                        fontSize: "0.75rem",
-                        fontWeight: "600",
-                      }}
-                    >
+                    <span style={{ color: "white", fontSize: "0.9rem" }}>
                       {brightness}%
                     </span>
                   </div>
@@ -2826,33 +2774,29 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                     onChange={(e) => setBrightness(parseInt(e.target.value))}
                     style={{
                       width: "100%",
-                      height: "6px",
+                      height: "30px",
                       WebkitAppearance: "none",
                       appearance: "none",
-                      background:
-                        "linear-gradient(90deg, #10b981 0%, #374151 100%)",
-                      borderRadius: "3px",
-                      outline: "none",
-                      marginBottom: "0.25rem",
+                      background: "transparent",
                     }}
                   />
                 </div>
               </div>
             )}
 
-            {/* Rotate Buttons */}
             <div
               style={{
                 display: "flex",
-                gap: "0.5rem",
-                marginBottom: "0.75rem",
+                justifyContent: "center",
+                gap: "1rem",
+                marginBottom: "1rem",
+                flexWrap: "wrap",
               }}
             >
               <button
                 onClick={() => handleRotate(-90)}
                 style={{
-                  flex: 1,
-                  padding: "0.625rem",
+                  padding: "0.75rem 1.5rem",
                   backgroundColor: "#374151",
                   color: "white",
                   border: "none",
@@ -2860,20 +2804,18 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  gap: "0.375rem",
-                  fontSize: "0.75rem",
+                  gap: "0.5rem",
+                  minWidth: "140px",
                 }}
               >
-                <MdRotateLeft size={14} />
+                <MdRotateLeft size={20} />
                 Rotate Left
               </button>
 
               <button
                 onClick={() => handleRotate(90)}
                 style={{
-                  flex: 1,
-                  padding: "0.625rem",
+                  padding: "0.75rem 1.5rem",
                   backgroundColor: "#374151",
                   color: "white",
                   border: "none",
@@ -2881,36 +2823,35 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  gap: "0.375rem",
-                  fontSize: "0.75rem",
+                  gap: "0.5rem",
+                  minWidth: "140px",
                 }}
               >
-                <MdRotateRight size={14} />
+                <MdRotateRight size={20} />
                 Rotate Right
               </button>
             </div>
 
-            {/* Save & Cancel Buttons */}
             <div
               style={{
                 display: "flex",
-                flexDirection: "column",
-                gap: "0.5rem",
+                gap: "0.75rem",
               }}
             >
               <button
                 onClick={handleSaveImage}
                 style={{
-                  padding: "0.75rem",
+                  flex: 1,
+                  padding: "1rem",
                   background:
                     "linear-gradient(135deg, #10b981 0%, #059669 100%)",
                   color: "white",
                   border: "none",
                   borderRadius: "8px",
                   fontWeight: "600",
-                  fontSize: "0.875rem",
+                  fontSize: "1rem",
                   cursor: "pointer",
+                  transition: "all 0.2s ease",
                 }}
               >
                 ✓ Save Image
@@ -2922,14 +2863,15 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                   resetStates();
                 }}
                 style={{
-                  padding: "0.75rem",
-                  backgroundColor: "#4b5563",
+                  padding: "1rem 1.5rem",
+                  backgroundColor: "#6b7280",
                   color: "white",
                   border: "none",
                   borderRadius: "8px",
                   fontWeight: "600",
-                  fontSize: "0.875rem",
+                  fontSize: "1rem",
                   cursor: "pointer",
+                  transition: "all 0.2s ease",
                 }}
               >
                 Cancel
@@ -2979,12 +2921,51 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           </div>
         )}
 
+        {!isCropping && !processingImage && mode === "video" && !preview && (
+          <div
+            style={{
+              padding: "1rem",
+              borderTop: "1px solid #374151",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.75rem",
+              }}
+            >
+              <button
+                onClick={() => openNativeCamera("video")}
+                style={{
+                  background: "#374151",
+                  color: "white",
+                  padding: "1rem",
+                  borderRadius: "8px",
+                  fontWeight: "600",
+                  fontSize: "0.9rem",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.5rem",
+                  textAlign: "center",
+                  width: "100%",
+                }}
+              >
+                <MdFileUpload size={20} />
+                <span>Use Native Camera</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {preview && mode === "video" && (
           <div
             style={{
               padding: "1rem",
               borderTop: "1px solid #374151",
-              flexShrink: 0,
             }}
           >
             <button
