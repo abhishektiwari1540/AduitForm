@@ -1104,25 +1104,25 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
   // Handle touch events for mobile
   const handleTouchStart = (e) => {
-  if (editorMode !== "draw") return;
+    if (editorMode !== "draw") return;
     if (drawTool !== "text" || textPosition) {
-    e.preventDefault();
-  }
-  handleMouseDown(e);
-};
+      e.preventDefault();
+    }
+    handleMouseDown(e);
+  };
 
   const handleTouchMove = (e) => {
-  if (editorMode !== "draw") return;
+    if (editorMode !== "draw") return;
     if (isDrawing || isDraggingElement) {
-    e.preventDefault();
-  }
-  handleMouseMove(e);
-};
+      e.preventDefault();
+    }
+    handleMouseMove(e);
+  };
 
   const handleTouchEnd = (e) => {
-  if (editorMode !== "draw") return;
+    if (editorMode !== "draw") return;
     handleMouseUp();
-};
+  };
 
   const findElementAtPosition = (x, y) => {
     for (const element of elements) {
@@ -1200,24 +1200,24 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   };
 
   const handleTextSubmit = () => {
-  if (!textInput || !textPosition) return;
+    if (!textInput || !textPosition) return;
 
-  const newElement = {
-    id: Date.now() + Math.random(),
-    type: "text",
-    color: drawColor,
-    text: textInput,
-    x: textPosition.x,
-    y: textPosition.y,
-    fontSize: 32,
+    const newElement = {
+      id: Date.now() + Math.random(),
+      type: "text",
+      color: drawColor,
+      text: textInput,
+      x: textPosition.x,
+      y: textPosition.y,
+      fontSize: 32,
+    };
+
+    setElements([...elements, newElement]);
+    saveDrawingState();
+    setTextInput("");
+    setTextPosition(null);
+    renderDrawing();
   };
-
-  setElements([...elements, newElement]);
-  saveDrawingState();
-  setTextInput("");
-  setTextPosition(null);
-  renderDrawing();
-};
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && textInput.trim()) {
@@ -2007,101 +2007,103 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 />
               )}
 
-             {textPosition && (
-  <div
-    style={{
-      position: "absolute",
-      top: "50%",
-      left: "50%",
-      transform: "translate(-50%, -50%)",
-      backgroundColor: "rgba(0, 0, 0, 0.85)",
-      padding: "1rem",
-      borderRadius: "0.5rem",
-      display: "flex",
-      flexDirection: "column",
-      gap: "0.5rem",
-      minWidth: "300px",
-      width: "80%",
-      maxWidth: "400px",
-      zIndex: 100,
-    }}
-    onClick={(e) => e.stopPropagation()} // This prevents clicks inside from bubbling up
-  >
-    <span
-      style={{
-        color: "white",
-        fontWeight: "600",
-        fontSize: "1rem",
-        marginBottom: "0.5rem",
-      }}
-    >
-      Add Text
-    </span>
-    <input
-      type="text"
-      value={textInput}
-      onChange={(e) => setTextInput(e.target.value)}
-      placeholder="Type text and press Enter..."
-      autoFocus
-      style={{
-        padding: "0.75rem",
-        borderRadius: "0.25rem",
-        border: "1px solid #4b5563",
-        backgroundColor: "rgba(255, 255, 255, 0.1)",
-        color: "white",
-        fontSize: "1rem",
-      }}
-      onKeyPress={handleKeyPress}
-      onClick={(e) => e.stopPropagation()} // Prevent clicks on input
-    />
-    <div
-      style={{
-        display: "flex",
-        gap: "0.5rem",
-        justifyContent: "flex-end",
-        marginTop: "0.5rem",
-      }}
-    >
-      <button
-        onClick={(e) => {
-          e.stopPropagation(); // Prevent event bubbling
-          setTextPosition(null);
-          setTextInput("");
-        }}
-        style={{
-          padding: "0.75rem 1.5rem",
-          backgroundColor: "rgba(107, 114, 128, 0.5)",
-          color: "white",
-          border: "none",
-          borderRadius: "0.25rem",
-          cursor: "pointer",
-          fontSize: "0.9rem",
-        }}
-      >
-        Cancel
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation(); // Prevent event bubbling
-          handleTextSubmit();
-        }}
-        disabled={!textInput.trim()}
-        style={{
-          padding: "0.75rem 1.5rem",
-          backgroundColor: textInput.trim() ? "#10b981" : "#4b5563",
-          color: "white",
-          border: "none",
-          borderRadius: "0.25rem",
-          cursor: textInput.trim() ? "pointer" : "not-allowed",
-          fontSize: "0.9rem",
-          opacity: textInput.trim() ? 1 : 0.5,
-        }}
-      >
-        Add
-      </button>
-    </div>
-  </div>
-)}
+              {textPosition && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    backgroundColor: "rgba(0, 0, 0, 0.85)",
+                    padding: "1rem",
+                    borderRadius: "0.5rem",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.5rem",
+                    minWidth: "300px",
+                    width: "80%",
+                    maxWidth: "400px",
+                    zIndex: 100,
+                  }}
+                  onClick={(e) => e.stopPropagation()} // This prevents clicks inside from bubbling up
+                >
+                  <span
+                    style={{
+                      color: "white",
+                      fontWeight: "600",
+                      fontSize: "1rem",
+                      marginBottom: "0.5rem",
+                    }}
+                  >
+                    Add Text
+                  </span>
+                  <input
+                    type="text"
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                    placeholder="Type text and press Enter..."
+                    autoFocus
+                    style={{
+                      padding: "0.75rem",
+                      borderRadius: "0.25rem",
+                      border: "1px solid #4b5563",
+                      backgroundColor: "rgba(255, 255, 255, 0.1)",
+                      color: "white",
+                      fontSize: "1rem",
+                    }}
+                    onKeyPress={handleKeyPress}
+                    onClick={(e) => e.stopPropagation()} // Prevent clicks on input
+                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "0.5rem",
+                      justifyContent: "flex-end",
+                      marginTop: "0.5rem",
+                    }}
+                  >
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent event bubbling
+                        setTextPosition(null);
+                        setTextInput("");
+                      }}
+                      style={{
+                        padding: "0.75rem 1.5rem",
+                        backgroundColor: "rgba(107, 114, 128, 0.5)",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "0.25rem",
+                        cursor: "pointer",
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent event bubbling
+                        handleTextSubmit();
+                      }}
+                      disabled={!textInput.trim()}
+                      style={{
+                        padding: "0.75rem 1.5rem",
+                        backgroundColor: textInput.trim()
+                          ? "#10b981"
+                          : "#4b5563",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "0.25rem",
+                        cursor: textInput.trim() ? "pointer" : "not-allowed",
+                        fontSize: "0.9rem",
+                        opacity: textInput.trim() ? 1 : 0.5,
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : mode === "video" && preview ? (
             <div
