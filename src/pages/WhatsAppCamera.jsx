@@ -464,6 +464,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const [cameraAccessMethod, setCameraAccessMethod] = useState("direct");
   const [displayScale, setDisplayScale] = useState(1);
   const [displayOffset, setDisplayOffset] = useState({ x: 0, y: 0 });
+const [fontSize, setFontSize] = useState(32);
 
   // Check if Android device
   const isAndroid = () => {
@@ -591,6 +592,20 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       img.src = imageToEdit;
     }
   }, [imageToEdit]);
+  useEffect(() => {
+  const handleKeyDown = (e) => {
+    if (editorMode === "draw" && selectedElement) {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        deleteElement(selectedElement);
+      }
+    }
+  };
+
+  window.addEventListener('keydown', handleKeyDown);
+  return () => {
+    window.removeEventListener('keydown', handleKeyDown);
+  };
+}, [editorMode, selectedElement]);
 
   // FIX: Preserve drawings when switching editor modes
   useEffect(() => {
@@ -617,6 +632,26 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       renderDrawing();
     }
   }, [editorMode, imageToEdit]);
+
+  useEffect(() => {
+  const handleClickOutside = (e) => {
+    if (textPosition && containerRef.current) {
+      const textPopup = containerRef.current.querySelector('.text-popup');
+      if (textPopup && !textPopup.contains(e.target)) {
+        setTextPosition(null);
+        setTextInput("");
+      }
+    }
+  };
+
+  document.addEventListener('mousedown', handleClickOutside);
+  document.addEventListener('touchstart', handleClickOutside);
+
+  return () => {
+    document.removeEventListener('mousedown', handleClickOutside);
+    document.removeEventListener('touchstart', handleClickOutside);
+  };
+}, [textPosition]);
 
   const initializeCamera = async () => {
     try {
@@ -981,74 +1016,99 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   };
 
   const handleMouseDown = (e) => {
-    if (editorMode !== "draw") return;
+  if (editorMode !== "draw") return;
 
-    const coords = getCanvasCoordinates(e);
-    const clickedElement = findElementAtPosition(coords.x, coords.y);
+  const coords = getCanvasCoordinates(e);
+  const clickedElement = findElementAtPosition(coords.x, coords.y);
 
-    if (clickedElement) {
-      setSelectedElement(clickedElement);
-      const offsetX = coords.x - clickedElement.x;
-      const offsetY = coords.y - clickedElement.y;
-      setDragOffset({ x: offsetX, y: offsetY });
-      setIsDraggingElement(true);
-      setShowDeleteZone(true);
+  if (clickedElement) {
+    setSelectedElement(clickedElement);
+    const offsetX = coords.x - clickedElement.x;
+    const offsetY = coords.y - clickedElement.y;
+    setDragOffset({ x: offsetX, y: offsetY });
+    setIsDraggingElement(true);
+    setShowDeleteZone(true);
+    
+    // If clicking on a text element and we're in text mode, don't open text popup
+    if (drawTool === "text" && clickedElement.type === "text") {
       return;
     }
-
+  } else {
+    // Clicked empty space - deselect any selected element
     setSelectedElement(null);
+  }
 
-    if (drawTool === "text") {
+  if (drawTool === "text") {
+    // Only open text popup if not clicking on existing text
+    if (!clickedElement || clickedElement.type !== "text") {
       setTextPosition(coords);
-      return;
     }
+    return;
+  }
 
-    setIsDrawing(true);
+  setIsDrawing(true);
 
-    if (drawTool === "pen") {
-      setTempElement({
-        type: "pen",
-        color: drawColor,
-        points: [coords],
-        width: 3,
-      });
-    } else {
-      setTempElement({
-        type: drawTool,
-        color: drawColor,
-        x: coords.x,
-        y: coords.y,
-        width: 0,
-        height: 0,
-      });
-    }
-  };
-
+  if (drawTool === "pen") {
+    setTempElement({
+      type: "pen",
+      color: drawColor,
+      points: [coords],
+      width: 3,
+    });
+  } else {
+    setTempElement({
+      type: drawTool,
+      color: drawColor,
+      x: coords.x,
+      y: coords.y,
+      width: 0,
+      height: 0,
+    });
+  }
+};
   const handleMouseMove = (e) => {
     if (editorMode !== "draw") return;
 
     const coords = getCanvasCoordinates(e);
 
     if (isDraggingElement && selectedElement) {
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const deleteZoneTop = 50;
-      const isOverDelete = e.clientY - containerRect.top < deleteZoneTop;
-      setIsOverDeleteZone(isOverDelete);
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const deleteZoneTop = 50;
+    const isOverDelete = e.clientY - containerRect.top < deleteZoneTop;
+    setIsOverDeleteZone(isOverDelete);
 
-      const newX = coords.x - dragOffset.x;
-      const newY = coords.y - dragOffset.y;
-
-      // Keep within bounds
-      const boundedX = Math.max(0, Math.min(imageDimensions.width, newX));
-      const boundedY = Math.max(0, Math.min(imageDimensions.height, newY));
-
-      const updatedElements = elements.map((el) =>
-        el.id === selectedElement.id ? { ...el, x: boundedX, y: boundedY } : el,
-      );
-      setElements(updatedElements);
-      renderDrawing();
-      return;
+    // Change cursor when over delete zone
+    if (isOverDelete) {
+      containerRef.current.style.cursor = "no-drop";
+    } else {
+      containerRef.current.style.cursor = "grabbing";
     }
+
+    const newX = coords.x - dragOffset.x;
+    const newY = coords.y - dragOffset.y;
+
+    // Keep within bounds
+    const boundedX = Math.max(0, Math.min(imageDimensions.width, newX));
+    const boundedY = Math.max(0, Math.min(imageDimensions.height, newY));
+
+    const updatedElements = elements.map((el) =>
+      el.id === selectedElement.id ? { ...el, x: boundedX, y: boundedY } : el,
+    );
+    setElements(updatedElements);
+    renderDrawing();
+    return;
+  }
+
+  // Change cursor when hovering over selectable elements
+  if (!isDrawing) {
+    const coords = getCanvasCoordinates(e);
+    const hoveredElement = findElementAtPosition(coords.x, coords.y);
+    if (hoveredElement) {
+      containerRef.current.style.cursor = "grab";
+    } else {
+      containerRef.current.style.cursor = drawTool === "text" ? "text" : "crosshair";
+    }
+  }
 
     if (!isDrawing) return;
 
@@ -1069,55 +1129,68 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   };
 
   const handleMouseUp = () => {
-    if (isDraggingElement && selectedElement) {
-      if (isOverDeleteZone) {
-        deleteElement(selectedElement);
-      }
-
-      setIsDraggingElement(false);
-      setIsOverDeleteZone(false);
-      setShowDeleteZone(false);
-      saveDrawingState();
-      return;
+  if (isDraggingElement && selectedElement) {
+    if (isOverDeleteZone) {
+      deleteElement(selectedElement);
     }
 
-    if (!isDrawing || !tempElement) return;
-
-    if (drawTool === "pen" && tempElement.points.length < 2) {
-      setIsDrawing(false);
-      setTempElement(null);
-      return;
-    }
-
-    const newElement = {
-      ...tempElement,
-      id: Date.now() + Math.random(),
-    };
-
-    setElements([...elements, newElement]);
+    setIsDraggingElement(false);
+    setIsOverDeleteZone(false);
+    setShowDeleteZone(false);
     saveDrawingState();
+    return;
+  }
 
+  if (!isDrawing || !tempElement) return;
+
+  if (drawTool === "pen" && tempElement.points.length < 2) {
     setIsDrawing(false);
     setTempElement(null);
-    renderDrawing();
+    return;
+  }
+
+  const newElement = {
+    ...tempElement,
+    id: Date.now() + Math.random(),
   };
+
+  setElements([...elements, newElement]);
+  saveDrawingState();
+
+  setIsDrawing(false);
+  setTempElement(null);
+  renderDrawing();
+};
 
   // Handle touch events for mobile
   const handleTouchStart = (e) => {
-    if (editorMode !== "draw") return;
-    if (drawTool !== "text" || textPosition) {
-      e.preventDefault();
+  if (editorMode !== "draw") return;
+  
+  e.preventDefault(); // Always prevent default for touch start
+  
+  const coords = getCanvasCoordinates(e);
+  const clickedElement = findElementAtPosition(coords.x, coords.y);
+  
+  // For text tool, only open popup if not clicking on existing text
+  if (drawTool === "text") {
+    if (!clickedElement || clickedElement.type !== "text") {
+      setTextPosition(coords);
+      return;
     }
-    handleMouseDown(e);
-  };
+  }
+  
+  handleMouseDown(e);
+};
 
-  const handleTouchMove = (e) => {
-    if (editorMode !== "draw") return;
-    if (isDrawing || isDraggingElement) {
-      e.preventDefault();
-    }
-    handleMouseMove(e);
-  };
+ const handleTouchMove = (e) => {
+  if (editorMode !== "draw") return;
+  
+  if (isDrawing || isDraggingElement) {
+    e.preventDefault(); // Only prevent default when actually drawing/dragging
+  }
+  
+  handleMouseMove(e);
+};
 
   const handleTouchEnd = (e) => {
     if (editorMode !== "draw") return;
@@ -1133,41 +1206,42 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
     return null;
   };
 
-  const isPointInElement = (x, y, element) => {
-    if (element.type === "pen") {
-      for (let i = 0; i < element.points.length - 1; i++) {
-        const p1 = element.points[i];
-        const p2 = element.points[i + 1];
-        const distance = pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y);
-        if (distance < 20) return true;
-      }
-      return false;
-    } else if (element.type === "text") {
-      const bounds = getTextBounds(element);
-      return (
-        x >= bounds.x - 20 &&
-        x <= bounds.x + bounds.width + 20 &&
-        y >= bounds.y - bounds.height - 20 &&
-        y <= bounds.y + 20
-      );
-    } else if (element.type === "circle") {
-      const radius = Math.sqrt(
-        Math.pow(element.width, 2) + Math.pow(element.height, 2),
-      );
-      const distance = Math.sqrt(
-        Math.pow(x - element.x, 2) + Math.pow(y - element.y, 2),
-      );
-      return Math.abs(distance - radius) < 25;
-    } else {
-      const bounds = getElementBounds(element);
-      return (
-        x >= bounds.x - 20 &&
-        x <= bounds.x + bounds.width + 20 &&
-        y >= bounds.y - 20 &&
-        y <= bounds.y + bounds.height + 20
-      );
+ const isPointInElement = (x, y, element) => {
+  if (element.type === "pen") {
+    for (let i = 0; i < element.points.length - 1; i++) {
+      const p1 = element.points[i];
+      const p2 = element.points[i + 1];
+      const distance = pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y);
+      if (distance < 20) return true;
     }
-  };
+    return false;
+  } else if (element.type === "text") {
+    const bounds = getTextBounds(element);
+    // Make text selection area larger for easier clicking
+    return (
+      x >= bounds.x - 30 &&
+      x <= bounds.x + bounds.width + 30 &&
+      y >= bounds.y - bounds.height - 30 &&
+      y <= bounds.y + 30
+    );
+  } else if (element.type === "circle") {
+    const radius = Math.sqrt(
+      Math.pow(element.width, 2) + Math.pow(element.height, 2),
+    );
+    const distance = Math.sqrt(
+      Math.pow(x - element.x, 2) + Math.pow(y - element.y, 2),
+    );
+    return Math.abs(distance - radius) < 25;
+  } else {
+    const bounds = getElementBounds(element);
+    return (
+      x >= bounds.x - 20 &&
+      x <= bounds.x + bounds.width + 20 &&
+      y >= bounds.y - 20 &&
+      y <= bounds.y + bounds.height + 20
+    );
+  }
+};
 
   const pointToLineDistance = (x, y, x1, y1, x2, y2) => {
     const A = x - x1;
@@ -1209,7 +1283,7 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
       text: textInput,
       x: textPosition.x,
       y: textPosition.y,
-      fontSize: 32,
+    fontSize: fontSize, // Add this line
     };
 
     setElements([...elements, newElement]);
@@ -1390,24 +1464,55 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   };
 
   const renderDrawing = () => {
-    if (!drawingCanvasRef.current || !imageDimensions.width) return;
+  if (!drawingCanvasRef.current || !imageDimensions.width) return;
 
-    const canvas = drawingCanvasRef.current;
-    const ctx = canvas.getContext("2d");
+  const canvas = drawingCanvasRef.current;
+  const ctx = canvas.getContext("2d");
 
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw all elements
-    elements.forEach((element) => {
-      drawElement(ctx, element, selectedElement?.id === element.id);
-    });
+  // Draw all elements
+  elements.forEach((element) => {
+    drawElement(ctx, element, selectedElement?.id === element.id);
+  });
 
-    // Draw temporary element (while drawing)
-    if (tempElement) {
-      drawElement(ctx, tempElement);
-    }
-  };
+  // Draw temporary element (while drawing)
+  if (tempElement) {
+    drawElement(ctx, tempElement);
+  }
+
+  // Draw selection border for better visibility
+  if (selectedElement) {
+    const bounds = getElementBounds(selectedElement);
+    ctx.strokeStyle = "#10b981";
+    ctx.setLineDash([5, 5]);
+    ctx.lineWidth = 2;
+    
+    // Add a larger, more visible border for selected elements
+    ctx.strokeRect(
+      bounds.x - 15,
+      bounds.y - 15,
+      bounds.width + 30,
+      bounds.height + 30
+    );
+    
+    // Add corner handles for better visual feedback
+    ctx.fillStyle = "#10b981";
+    const handleSize = 8;
+    
+    // Top-left corner
+    ctx.fillRect(bounds.x - 15, bounds.y - 15, handleSize, handleSize);
+    // Top-right corner
+    ctx.fillRect(bounds.x + bounds.width + 15 - handleSize, bounds.y - 15, handleSize, handleSize);
+    // Bottom-left corner
+    ctx.fillRect(bounds.x - 15, bounds.y + bounds.height + 15 - handleSize, handleSize, handleSize);
+    // Bottom-right corner
+    ctx.fillRect(bounds.x + bounds.width + 15 - handleSize, bounds.y + bounds.height + 15 - handleSize, handleSize, handleSize);
+    
+    ctx.setLineDash([]);
+  }
+};
 
   // FIX: Render drawings whenever elements change or editor mode changes
   useEffect(() => {
@@ -1510,18 +1615,170 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
 
   // FIXED: Correct crop overlay rendering with proper coordinate conversion
   const renderCropOverlay = () => {
-    if (!containerRef.current || !imageDimensions.width || !isCropping)
-      return null;
+  if (!containerRef.current || !imageDimensions.width || !isCropping)
+    return null;
 
-    const rect = containerRef.current.getBoundingClientRect();
+  const rect = containerRef.current.getBoundingClientRect();
 
-    // Calculate crop rectangle position on screen using display scale and offset
-    const screenX = cropRect.x * displayScale + displayOffset.x;
-    const screenY = cropRect.y * displayScale + displayOffset.y;
-    const screenWidth = cropRect.width * displayScale;
-    const screenHeight = cropRect.height * displayScale;
+  // Calculate crop rectangle position on screen using display scale and offset
+  const screenX = cropRect.x * displayScale + displayOffset.x;
+  const screenY = cropRect.y * displayScale + displayOffset.y;
+  const screenWidth = cropRect.width * displayScale;
+  const screenHeight = cropRect.height * displayScale;
 
-    return (
+  const handleMoveStart = (startX, startY) => {
+    const startCrop = { ...cropRect };
+
+    const handleMove = (moveX, moveY) => {
+      const deltaX = (moveX - startX) / displayScale;
+      const deltaY = (moveY - startY) / displayScale;
+
+      setCropRect({
+        x: Math.max(
+          0,
+          Math.min(
+            imageDimensions.width - startCrop.width,
+            startCrop.x + deltaX
+          )
+        ),
+        y: Math.max(
+          0,
+          Math.min(
+            imageDimensions.height - startCrop.height,
+            startCrop.y + deltaY
+          )
+        ),
+        width: startCrop.width,
+        height: startCrop.height,
+      });
+    };
+
+    const handleMoveEnd = () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("touchend", handleTouchEnd);
+    };
+
+    const handleMouseMove = (e) => {
+      handleMove(e.clientX, e.clientY);
+    };
+
+    const handleTouchMove = (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      handleMove(touch.clientX, touch.clientY);
+    };
+
+    const handleMouseUp = () => {
+      handleMoveEnd();
+    };
+
+    const handleTouchEnd = () => {
+      handleMoveEnd();
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("touchmove", handleTouchMove, {
+      passive: false,
+    });
+    document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("touchend", handleTouchEnd);
+  };
+
+  const handleCornerStart = (corner, startX, startY) => {
+    const startCrop = { ...cropRect };
+
+    const handleMove = (moveX, moveY) => {
+      const deltaX = (moveX - startX) / displayScale;
+      const deltaY = (moveY - startY) / displayScale;
+
+      let newWidth = startCrop.width;
+      let newHeight = startCrop.height;
+      let newX = startCrop.x;
+      let newY = startCrop.y;
+
+      if (corner === "nw") {
+        newWidth = Math.max(100, startCrop.width - deltaX);
+        newHeight = Math.max(100, startCrop.height - deltaY);
+        newX = startCrop.x + deltaX;
+        newY = startCrop.y + deltaY;
+      } else if (corner === "ne") {
+        newWidth = Math.max(100, startCrop.width + deltaX);
+        newHeight = Math.max(100, startCrop.height - deltaY);
+        newY = startCrop.y + deltaY;
+      } else if (corner === "sw") {
+        newWidth = Math.max(100, startCrop.width - deltaX);
+        newHeight = Math.max(100, startCrop.height + deltaY);
+        newX = startCrop.x + deltaX;
+      } else if (corner === "se") {
+        newWidth = Math.max(100, startCrop.width + deltaX);
+        newHeight = Math.max(100, startCrop.height + deltaY);
+      }
+
+      setCropRect({
+        x: Math.max(0, Math.min(imageDimensions.width - newWidth, newX)),
+        y: Math.max(0, Math.min(imageDimensions.height - newHeight, newY)),
+        width: newWidth,
+        height: newHeight,
+      });
+    };
+
+    const handleMoveEnd = () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("touchend", handleTouchEnd);
+    };
+
+    const handleMouseMove = (e) => {
+      handleMove(e.clientX, e.clientY);
+    };
+
+    const handleTouchMove = (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      handleMove(touch.clientX, touch.clientY);
+    };
+
+    const handleMouseUp = () => {
+      handleMoveEnd();
+    };
+
+    const handleTouchEnd = () => {
+      handleMoveEnd();
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("touchmove", handleTouchMove, {
+      passive: false,
+    });
+    document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("touchend", handleTouchEnd);
+  };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        cursor: "move",
+        zIndex: 10,
+      }}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        handleMoveStart(e.clientX, e.clientY);
+      }}
+      onTouchStart={(e) => {
+        e.stopPropagation();
+        const touch = e.touches[0];
+        handleMoveStart(touch.clientX, touch.clientY);
+      }}
+    >
+      {/* Dark overlay outside crop area */}
       <div
         style={{
           position: "absolute",
@@ -1529,192 +1786,74 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           left: 0,
           right: 0,
           bottom: 0,
-          cursor: "move",
-          zIndex: 10,
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
         }}
-        onMouseDown={(e) => {
-          const startX = e.clientX || (e.touches && e.touches[0].clientX);
-          const startY = e.clientY || (e.touches && e.touches[0].clientY);
-          const startCrop = { ...cropRect };
+      />
 
-          const handleMouseMove = (moveEvent) => {
-            const moveX =
-              moveEvent.clientX ||
-              (moveEvent.touches && moveEvent.touches[0].clientX);
-            const moveY =
-              moveEvent.clientY ||
-              (moveEvent.touches && moveEvent.touches[0].clientY);
-            const deltaX = (moveX - startX) / displayScale;
-            const deltaY = (moveY - startY) / displayScale;
-
-            setCropRect({
-              x: Math.max(
-                0,
-                Math.min(
-                  imageDimensions.width - startCrop.width,
-                  startCrop.x + deltaX,
-                ),
-              ),
-              y: Math.max(
-                0,
-                Math.min(
-                  imageDimensions.height - startCrop.height,
-                  startCrop.y + deltaY,
-                ),
-              ),
-              width: startCrop.width,
-              height: startCrop.height,
-            });
-          };
-
-          const handleMouseUp = () => {
-            document.removeEventListener("mousemove", handleMouseMove);
-            document.removeEventListener("touchmove", handleMouseMove);
-            document.removeEventListener("mouseup", handleMouseUp);
-            document.removeEventListener("touchend", handleMouseUp);
-          };
-
-          document.addEventListener("mousemove", handleMouseMove);
-          document.addEventListener("touchmove", handleMouseMove, {
-            passive: false,
-          });
-          document.addEventListener("mouseup", handleMouseUp);
-          document.addEventListener("touchend", handleMouseUp);
+      {/* Crop rectangle */}
+      <div
+        style={{
+          position: "absolute",
+          left: `${screenX}px`,
+          top: `${screenY}px`,
+          width: `${screenWidth}px`,
+          height: `${screenHeight}px`,
+          border: "2px solid white",
+          boxSizing: "border-box",
+          pointerEvents: "none",
         }}
-      >
-        {/* Dark overlay outside crop area */}
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.5)",
-          }}
-        />
+      />
 
-        {/* Crop rectangle */}
-        <div
-          style={{
-            position: "absolute",
-            left: `${screenX}px`,
-            top: `${screenY}px`,
-            width: `${screenWidth}px`,
-            height: `${screenHeight}px`,
-            border: "2px solid white",
-            boxSizing: "border-box",
-            pointerEvents: "none",
-          }}
-        />
+      {/* Crop corners */}
+      {["nw", "ne", "sw", "se"].map((corner) => {
+        const style = {
+          position: "absolute",
+          width: "40px", // Increased size for better touch target
+          height: "40px", // Increased size for better touch target
+          backgroundColor: "white",
+          border: "2px solid #10b981",
+          borderRadius: "4px",
+          pointerEvents: "auto",
+          touchAction: "none", // Important for mobile touch handling
+        };
 
-        {/* Crop corners */}
-        {["nw", "ne", "sw", "se"].map((corner) => {
-          const style = {
-            position: "absolute",
-            width: "30px",
-            height: "30px",
-            backgroundColor: "white",
-            border: "2px solid #10b981",
-            borderRadius: "4px",
-            pointerEvents: "auto",
-          };
+        if (corner === "nw") {
+          style.top = `${screenY - 20}px`;
+          style.left = `${screenX - 20}px`;
+          style.cursor = "nw-resize";
+        } else if (corner === "ne") {
+          style.top = `${screenY - 20}px`;
+          style.left = `${screenX + screenWidth - 20}px`;
+          style.cursor = "ne-resize";
+        } else if (corner === "sw") {
+          style.top = `${screenY + screenHeight - 20}px`;
+          style.left = `${screenX - 20}px`;
+          style.cursor = "sw-resize";
+        } else if (corner === "se") {
+          style.top = `${screenY + screenHeight - 20}px`;
+          style.left = `${screenX + screenWidth - 20}px`;
+          style.cursor = "se-resize";
+        }
 
-          if (corner === "nw") {
-            style.top = `${screenY - 15}px`;
-            style.left = `${screenX - 15}px`;
-            style.cursor = "nw-resize";
-          } else if (corner === "ne") {
-            style.top = `${screenY - 15}px`;
-            style.left = `${screenX + screenWidth - 15}px`;
-            style.cursor = "ne-resize";
-          } else if (corner === "sw") {
-            style.top = `${screenY + screenHeight - 15}px`;
-            style.left = `${screenX - 15}px`;
-            style.cursor = "sw-resize";
-          } else if (corner === "se") {
-            style.top = `${screenY + screenHeight - 15}px`;
-            style.left = `${screenX + screenWidth - 15}px`;
-            style.cursor = "se-resize";
-          }
-
-          return (
-            <div
-              key={corner}
-              style={style}
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                const startX = e.clientX || (e.touches && e.touches[0].clientX);
-                const startY = e.clientY || (e.touches && e.touches[0].clientY);
-                const startCrop = { ...cropRect };
-
-                const handleMouseMove = (moveEvent) => {
-                  const moveX =
-                    moveEvent.clientX ||
-                    (moveEvent.touches && moveEvent.touches[0].clientX);
-                  const moveY =
-                    moveEvent.clientY ||
-                    (moveEvent.touches && moveEvent.touches[0].clientY);
-                  const deltaX = (moveX - startX) / displayScale;
-                  const deltaY = (moveY - startY) / displayScale;
-
-                  let newWidth = startCrop.width;
-                  let newHeight = startCrop.height;
-                  let newX = startCrop.x;
-                  let newY = startCrop.y;
-
-                  if (corner === "nw") {
-                    newWidth = Math.max(100, startCrop.width - deltaX);
-                    newHeight = Math.max(100, startCrop.height - deltaY);
-                    newX = startCrop.x + deltaX;
-                    newY = startCrop.y + deltaY;
-                  } else if (corner === "ne") {
-                    newWidth = Math.max(100, startCrop.width + deltaX);
-                    newHeight = Math.max(100, startCrop.height - deltaY);
-                    newY = startCrop.y + deltaY;
-                  } else if (corner === "sw") {
-                    newWidth = Math.max(100, startCrop.width - deltaX);
-                    newHeight = Math.max(100, startCrop.height + deltaY);
-                    newX = startCrop.x + deltaX;
-                  } else if (corner === "se") {
-                    newWidth = Math.max(100, startCrop.width + deltaX);
-                    newHeight = Math.max(100, startCrop.height + deltaY);
-                  }
-
-                  setCropRect({
-                    x: Math.max(
-                      0,
-                      Math.min(imageDimensions.width - newWidth, newX),
-                    ),
-                    y: Math.max(
-                      0,
-                      Math.min(imageDimensions.height - newHeight, newY),
-                    ),
-                    width: newWidth,
-                    height: newHeight,
-                  });
-                };
-
-                const handleMouseUp = () => {
-                  document.removeEventListener("mousemove", handleMouseMove);
-                  document.removeEventListener("touchmove", handleMouseMove);
-                  document.removeEventListener("mouseup", handleMouseUp);
-                  document.removeEventListener("touchend", handleMouseUp);
-                };
-
-                document.addEventListener("mousemove", handleMouseMove);
-                document.addEventListener("touchmove", handleMouseMove, {
-                  passive: false,
-                });
-                document.addEventListener("mouseup", handleMouseUp);
-                document.addEventListener("touchend", handleMouseUp);
-              }}
-            />
-          );
-        })}
-      </div>
-    );
-  };
+        return (
+          <div
+            key={corner}
+            style={style}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              handleCornerStart(corner, e.clientX, e.clientY);
+            }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              const touch = e.touches[0];
+              handleCornerStart(corner, touch.clientX, touch.clientY);
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+};
 
   const resetStates = () => {
     setPreview(null);
@@ -1758,13 +1897,19 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
         alignItems: "center",
         justifyContent: "center",
         zIndex: 20000,
+          overflowY: "auto", // Enable scrolling
+      WebkitOverflowScrolling: "touch", //
       }}
       onClick={() => {
-        if (!isCropping && !textPosition && !processingImage) {
-          resetStates();
-          onClose();
-        }
-      }}
+    // Close text popup if open
+    if (textPosition) {
+      setTextPosition(null);
+      setTextInput("");
+    } else if (!isCropping && !textPosition && !processingImage) {
+      resetStates();
+      onClose();
+    }
+  }}
     >
       {/* Hidden file inputs for Android native camera */}
       <input
@@ -1924,24 +2069,30 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 marginBottom: "1rem",
                 userSelect: "none",
                 WebkitUserSelect: "none",
+                touchAction: "none",
               }}
-              onMouseDown={editorMode === "draw" ? handleMouseDown : undefined}
-              onMouseMove={editorMode === "draw" ? handleMouseMove : undefined}
-              onMouseUp={editorMode === "draw" ? handleMouseUp : undefined}
-              onTouchStart={
-                editorMode === "draw" ? handleTouchStart : undefined
-              }
-              onTouchMove={editorMode === "draw" ? handleTouchMove : undefined}
-              onTouchEnd={editorMode === "draw" ? handleTouchEnd : undefined}
-              onClick={
-                editorMode === "draw" && drawTool === "text"
-                  ? (e) => {
-                      const coords = getCanvasCoordinates(e);
-                      setTextPosition(coords);
-                      setSelectedElement(null);
-                    }
-                  : undefined
-              }
+             onMouseDown={editorMode === "draw" ? handleMouseDown : undefined}
+  onMouseMove={editorMode === "draw" ? handleMouseMove : undefined}
+  onMouseUp={editorMode === "draw" ? handleMouseUp : undefined}
+  onTouchStart={editorMode === "draw" ? handleTouchStart : undefined}
+  onTouchMove={editorMode === "draw" ? handleTouchMove : undefined}
+  onTouchEnd={editorMode === "draw" ? handleTouchEnd : undefined}
+  onTouchCancel={editorMode === "draw" ? handleTouchEnd : undefined}
+             onClick={
+    editorMode === "draw" && drawTool === "text"
+      ? (e) => {
+          // Only open text popup if not already open and not clicking on existing element
+          const coords = getCanvasCoordinates(e);
+          const clickedElement = findElementAtPosition(coords.x, coords.y);
+          
+          // Don't open text popup if we're currently dragging or have a selected element
+          if (!textPosition && !isDraggingElement && (!clickedElement || clickedElement.type !== "text")) {
+            setTextPosition(coords);
+            setSelectedElement(null);
+          }
+        }
+      : undefined
+  }
             >
               <img
                 src={imageToEdit || preview}
@@ -2007,103 +2158,155 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
                 />
               )}
 
-              {textPosition && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "50%",
-                    left: "50%",
-                    transform: "translate(-50%, -50%)",
-                    backgroundColor: "rgba(0, 0, 0, 0.85)",
-                    padding: "1rem",
-                    borderRadius: "0.5rem",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.5rem",
-                    minWidth: "300px",
-                    width: "80%",
-                    maxWidth: "400px",
-                    zIndex: 100,
-                  }}
-                  onClick={(e) => e.stopPropagation()} // This prevents clicks inside from bubbling up
-                >
-                  <span
-                    style={{
-                      color: "white",
-                      fontWeight: "600",
-                      fontSize: "1rem",
-                      marginBottom: "0.5rem",
-                    }}
-                  >
-                    Add Text
-                  </span>
-                  <input
-                    type="text"
-                    value={textInput}
-                    onChange={(e) => setTextInput(e.target.value)}
-                    placeholder="Type text and press Enter..."
-                    autoFocus
-                    style={{
-                      padding: "0.75rem",
-                      borderRadius: "0.25rem",
-                      border: "1px solid #4b5563",
-                      backgroundColor: "rgba(255, 255, 255, 0.1)",
-                      color: "white",
-                      fontSize: "1rem",
-                    }}
-                    onKeyPress={handleKeyPress}
-                    onClick={(e) => e.stopPropagation()} // Prevent clicks on input
-                  />
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "0.5rem",
-                      justifyContent: "flex-end",
-                      marginTop: "0.5rem",
-                    }}
-                  >
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation(); // Prevent event bubbling
-                        setTextPosition(null);
-                        setTextInput("");
-                      }}
-                      style={{
-                        padding: "0.75rem 1.5rem",
-                        backgroundColor: "rgba(107, 114, 128, 0.5)",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "0.25rem",
-                        cursor: "pointer",
-                        fontSize: "0.9rem",
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation(); // Prevent event bubbling
-                        handleTextSubmit();
-                      }}
-                      disabled={!textInput.trim()}
-                      style={{
-                        padding: "0.75rem 1.5rem",
-                        backgroundColor: textInput.trim()
-                          ? "#10b981"
-                          : "#4b5563",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "0.25rem",
-                        cursor: textInput.trim() ? "pointer" : "not-allowed",
-                        fontSize: "0.9rem",
-                        opacity: textInput.trim() ? 1 : 0.5,
-                      }}
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-              )}
+   {textPosition && (
+  <div
+    className="text-popup"
+    style={{
+      position: "fixed",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+      backgroundColor: "rgba(0, 0, 0, 0.95)",
+      padding: window.innerWidth < 768 ? "0.75rem" : "1rem",
+      borderRadius: "0.5rem",
+      display: "flex",
+      flexDirection: "column",
+      gap: "0.5rem",
+      minWidth: window.innerWidth < 768 ? "90vw" : "300px",
+      width: window.innerWidth < 768 ? "90%" : "80%",
+      maxWidth: window.innerWidth < 768 ? "400px" : "400px",
+      zIndex: 100,
+      boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+      border: "1px solid rgba(255,255,255,0.1)"
+    }}
+    onClick={(e) => {
+      e.stopPropagation();
+      e.preventDefault();
+    }}
+  >
+    <span
+      style={{
+        color: "white",
+        fontWeight: "600",
+        fontSize: window.innerWidth < 768 ? "0.95rem" : "1rem",
+        marginBottom: "0.5rem",
+        textAlign: "center"
+      }}
+    >
+      Add Text
+    </span>
+    
+    {/* Font Size Range Selector */}
+    <div style={{ marginBottom: "0.5rem" }}>
+      <label
+        style={{
+          color: "white",
+          fontSize: window.innerWidth < 768 ? "0.85rem" : "0.9rem",
+          display: "block",
+          marginBottom: "0.25rem"
+        }}
+      >
+        Font Size: {fontSize}px
+      </label>
+      <input
+        type="range"
+        min="12"
+        max="72"
+        value={fontSize}
+        onChange={(e) => setFontSize(parseInt(e.target.value))}
+        style={{
+          width: "100%",
+          height: "6px",
+          borderRadius: "3px",
+          background: "#374151",
+          outline: "none",
+          WebkitAppearance: "none",
+          appearance: "none"
+        }}
+        onClick={(e) => e.stopPropagation()}
+      />
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        marginTop: "0.25rem"
+      }}>
+        <span style={{ color: "#9CA3AF", fontSize: "0.7rem" }}>12px</span>
+        <span style={{ color: "#9CA3AF", fontSize: "0.7rem" }}>72px</span>
+      </div>
+    </div>
+    
+    <input
+      type="text"
+      value={textInput}
+      onChange={(e) => setTextInput(e.target.value)}
+      placeholder="Type text and press Enter..."
+      autoFocus
+      style={{
+        padding: window.innerWidth < 768 ? "0.625rem" : "0.75rem",
+        borderRadius: "0.375rem",
+        border: "1px solid #4b5563",
+        backgroundColor: "rgba(255, 255, 255, 0.1)",
+        color: "white",
+        fontSize: window.innerWidth < 768 ? "0.95rem" : "1rem",
+        width: "100%",
+        boxSizing: "border-box"
+      }}
+      onKeyPress={handleKeyPress}
+      onClick={(e) => e.stopPropagation()}
+    />
+    
+    <div
+      style={{
+        display: "flex",
+        gap: "0.5rem",
+        justifyContent: "flex-end",
+        marginTop: "0.75rem"
+      }}
+    >
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setTextPosition(null);
+          setTextInput("");
+        }}
+        style={{
+          padding: window.innerWidth < 768 ? "0.5rem 1rem" : "0.75rem 1.5rem",
+          backgroundColor: "rgba(107, 114, 128, 0.7)",
+          color: "white",
+          border: "none",
+          borderRadius: "0.375rem",
+          cursor: "pointer",
+          fontSize: window.innerWidth < 768 ? "0.85rem" : "0.9rem",
+          flex: window.innerWidth < 768 ? 1 : "none",
+          minWidth: window.innerWidth < 768 ? "80px" : "auto"
+        }}
+      >
+        Cancel
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleTextSubmit();
+        }}
+        disabled={!textInput.trim()}
+        style={{
+          padding: window.innerWidth < 768 ? "0.5rem 1rem" : "0.75rem 1.5rem",
+          backgroundColor: textInput.trim() ? "#10b981" : "#4b5563",
+          color: "white",
+          border: "none",
+          borderRadius: "0.375rem",
+          cursor: textInput.trim() ? "pointer" : "not-allowed",
+          fontSize: window.innerWidth < 768 ? "0.85rem" : "0.9rem",
+          opacity: textInput.trim() ? 1 : 0.6,
+          flex: window.innerWidth < 768 ? 1 : "none",
+          minWidth: window.innerWidth < 768 ? "80px" : "auto"
+        }}
+      >
+        Add
+      </button>
+    </div>
+  </div>
+)}
             </div>
           ) : mode === "video" && preview ? (
             <div
@@ -3014,6 +3217,10 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
+           .text-popup * {
+    user-select: none;
+    -webkit-user-select: none;
+  }
       `}</style>
     </div>
   );
