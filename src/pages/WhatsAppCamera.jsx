@@ -22,6 +22,7 @@ import {
 } from "react-icons/md";
 import { FaArrowRight } from "react-icons/fa";
 import { Link } from "react-router-dom";
+import { MdCheck } from "react-icons/md";
 
 export default function WhatsAppCamera() {
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
@@ -464,7 +465,8 @@ function CameraModal({ isOpen, onClose, onImageCaptured, mode = "photo" }) {
   const [cameraAccessMethod, setCameraAccessMethod] = useState("direct");
   const [displayScale, setDisplayScale] = useState(1);
   const [displayOffset, setDisplayOffset] = useState({ x: 0, y: 0 });
-const [fontSize, setFontSize] = useState(32);
+  const [fontSize, setFontSize] = useState(32);
+  const [hueValue, setHueValue] = useState(0);
 
   // Check if Android device
   const isAndroid = () => {
@@ -574,38 +576,38 @@ const [fontSize, setFontSize] = useState(32);
 
   // FIX: Initialize drawing canvas when image loads and preserve drawings when switching modes
   useEffect(() => {
-    if (imageToEdit && drawingCanvasRef.current) {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = drawingCanvasRef.current;
-        if (!canvas) return;
+  if (imageToEdit && drawingCanvasRef.current) {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = drawingCanvasRef.current;
+      if (!canvas) return;
 
-        // Only reset canvas dimensions if they don't match
-        if (canvas.width !== img.width || canvas.height !== img.height) {
-          canvas.width = img.width;
-          canvas.height = img.height;
-        }
-
-        // Always render drawings when image loads
+      // Only reset canvas dimensions if they don't match
+      if (canvas.width !== img.width || canvas.height !== img.height) {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        // Clear only on initial setup
         renderDrawing();
-      };
-      img.src = imageToEdit;
-    }
-  }, [imageToEdit]);
-  useEffect(() => {
-  const handleKeyDown = (e) => {
-    if (editorMode === "draw" && selectedElement) {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        deleteElement(selectedElement);
       }
-    }
-  };
+    };
+    img.src = imageToEdit;
+  }
+}, [imageToEdit]);
 
-  window.addEventListener('keydown', handleKeyDown);
-  return () => {
-    window.removeEventListener('keydown', handleKeyDown);
-  };
-}, [editorMode, selectedElement]);
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (editorMode === "draw" && selectedElement) {
+        if (e.key === "Delete" || e.key === "Backspace") {
+          deleteElement(selectedElement);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [editorMode, selectedElement]);
 
   // FIX: Preserve drawings when switching editor modes
   useEffect(() => {
@@ -634,24 +636,24 @@ const [fontSize, setFontSize] = useState(32);
   }, [editorMode, imageToEdit]);
 
   useEffect(() => {
-  const handleClickOutside = (e) => {
-    if (textPosition && containerRef.current) {
-      const textPopup = containerRef.current.querySelector('.text-popup');
-      if (textPopup && !textPopup.contains(e.target)) {
-        setTextPosition(null);
-        setTextInput("");
+    const handleClickOutside = (e) => {
+      if (textPosition && containerRef.current) {
+        const textPopup = containerRef.current.querySelector(".text-popup");
+        if (textPopup && !textPopup.contains(e.target)) {
+          setTextPosition(null);
+          setTextInput("");
+        }
       }
-    }
-  };
+    };
 
-  document.addEventListener('mousedown', handleClickOutside);
-  document.addEventListener('touchstart', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
 
-  return () => {
-    document.removeEventListener('mousedown', handleClickOutside);
-    document.removeEventListener('touchstart', handleClickOutside);
-  };
-}, [textPosition]);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
+  }, [textPosition]);
 
   const initializeCamera = async () => {
     try {
@@ -1016,99 +1018,100 @@ const [fontSize, setFontSize] = useState(32);
   };
 
   const handleMouseDown = (e) => {
-  if (editorMode !== "draw") return;
+    if (editorMode !== "draw") return;
 
-  const coords = getCanvasCoordinates(e);
-  const clickedElement = findElementAtPosition(coords.x, coords.y);
+    const coords = getCanvasCoordinates(e);
+    const clickedElement = findElementAtPosition(coords.x, coords.y);
 
-  if (clickedElement) {
-    setSelectedElement(clickedElement);
-    const offsetX = coords.x - clickedElement.x;
-    const offsetY = coords.y - clickedElement.y;
-    setDragOffset({ x: offsetX, y: offsetY });
-    setIsDraggingElement(true);
-    setShowDeleteZone(true);
-    
-    // If clicking on a text element and we're in text mode, don't open text popup
-    if (drawTool === "text" && clickedElement.type === "text") {
+    if (clickedElement) {
+      setSelectedElement(clickedElement);
+      const offsetX = coords.x - clickedElement.x;
+      const offsetY = coords.y - clickedElement.y;
+      setDragOffset({ x: offsetX, y: offsetY });
+      setIsDraggingElement(true);
+      setShowDeleteZone(true);
+
+      // If clicking on a text element and we're in text mode, don't open text popup
+      if (drawTool === "text" && clickedElement.type === "text") {
+        return;
+      }
+    } else {
+      // Clicked empty space - deselect any selected element
+      setSelectedElement(null);
+    }
+
+    if (drawTool === "text") {
+      // Only open text popup if not clicking on existing text
+      if (!clickedElement || clickedElement.type !== "text") {
+        setTextPosition(coords);
+      }
       return;
     }
-  } else {
-    // Clicked empty space - deselect any selected element
-    setSelectedElement(null);
-  }
 
-  if (drawTool === "text") {
-    // Only open text popup if not clicking on existing text
-    if (!clickedElement || clickedElement.type !== "text") {
-      setTextPosition(coords);
+    setIsDrawing(true);
+
+    if (drawTool === "pen") {
+      setTempElement({
+        type: "pen",
+        color: drawColor,
+        points: [coords],
+        width: 3,
+      });
+    } else {
+      setTempElement({
+        type: drawTool,
+        color: drawColor,
+        x: coords.x,
+        y: coords.y,
+        width: 0,
+        height: 0,
+      });
     }
-    return;
-  }
-
-  setIsDrawing(true);
-
-  if (drawTool === "pen") {
-    setTempElement({
-      type: "pen",
-      color: drawColor,
-      points: [coords],
-      width: 3,
-    });
-  } else {
-    setTempElement({
-      type: drawTool,
-      color: drawColor,
-      x: coords.x,
-      y: coords.y,
-      width: 0,
-      height: 0,
-    });
-  }
-};
+  };
   const handleMouseMove = (e) => {
     if (editorMode !== "draw") return;
 
     const coords = getCanvasCoordinates(e);
 
     if (isDraggingElement && selectedElement) {
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const deleteZoneTop = 50;
-    const isOverDelete = e.clientY - containerRect.top < deleteZoneTop;
-    setIsOverDeleteZone(isOverDelete);
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const deleteZoneTop = 50;
+      const isOverDelete = e.clientY - containerRect.top < deleteZoneTop;
+      setIsOverDeleteZone(isOverDelete);
 
-    // Change cursor when over delete zone
-    if (isOverDelete) {
-      containerRef.current.style.cursor = "no-drop";
-    } else {
-      containerRef.current.style.cursor = "grabbing";
+      // Change cursor when over delete zone
+      if (isOverDelete) {
+        containerRef.current.style.cursor = "no-drop";
+      } else {
+        containerRef.current.style.cursor = "grabbing";
+      }
+
+      const newX = coords.x - dragOffset.x;
+      const newY = coords.y - dragOffset.y;
+
+      // Keep within bounds
+      const boundedX = Math.max(0, Math.min(imageDimensions.width, newX));
+      const boundedY = Math.max(0, Math.min(imageDimensions.height, newY));
+
+      const updatedElements = elements.map((el) =>
+        el.id === selectedElement.id ? { ...el, x: boundedX, y: boundedY } : el,
+      );
+      setElements(updatedElements);
+      renderDrawing();
+      return;
     }
 
-    const newX = coords.x - dragOffset.x;
-    const newY = coords.y - dragOffset.y;
-
-    // Keep within bounds
-    const boundedX = Math.max(0, Math.min(imageDimensions.width, newX));
-    const boundedY = Math.max(0, Math.min(imageDimensions.height, newY));
-
-    const updatedElements = elements.map((el) =>
-      el.id === selectedElement.id ? { ...el, x: boundedX, y: boundedY } : el,
-    );
-    setElements(updatedElements);
-    renderDrawing();
-    return;
-  }
-
-  // Change cursor when hovering over selectable elements
-  if (!isDrawing) {
-    const coords = getCanvasCoordinates(e);
-    const hoveredElement = findElementAtPosition(coords.x, coords.y);
-    if (hoveredElement) {
-      containerRef.current.style.cursor = "grab";
-    } else {
-      containerRef.current.style.cursor = drawTool === "text" ? "text" : "crosshair";
+    // Change cursor when hovering over selectable elements
+    if (!isDrawing) {
+      const coords = getCanvasCoordinates(e);
+      const hoveredElement = findElementAtPosition(coords.x, coords.y);
+      if (hoveredElement) {
+        containerRef.current.style.cursor = "grab";
+      } else {
+        containerRef.current.style.cursor =
+          drawTool === "text" ? "text" : "crosshair";
+      }
     }
-  }
 
     if (!isDrawing) return;
 
@@ -1129,68 +1132,68 @@ const [fontSize, setFontSize] = useState(32);
   };
 
   const handleMouseUp = () => {
-  if (isDraggingElement && selectedElement) {
-    if (isOverDeleteZone) {
-      deleteElement(selectedElement);
+    if (isDraggingElement && selectedElement) {
+      if (isOverDeleteZone) {
+        deleteElement(selectedElement);
+      }
+
+      setIsDraggingElement(false);
+      setIsOverDeleteZone(false);
+      setShowDeleteZone(false);
+      saveDrawingState();
+      return;
     }
 
-    setIsDraggingElement(false);
-    setIsOverDeleteZone(false);
-    setShowDeleteZone(false);
+    if (!isDrawing || !tempElement) return;
+
+    if (drawTool === "pen" && tempElement.points.length < 2) {
+      setIsDrawing(false);
+      setTempElement(null);
+      return;
+    }
+
+    const newElement = {
+      ...tempElement,
+      id: Date.now() + Math.random(),
+    };
+
+    setElements([...elements, newElement]);
     saveDrawingState();
-    return;
-  }
 
-  if (!isDrawing || !tempElement) return;
-
-  if (drawTool === "pen" && tempElement.points.length < 2) {
     setIsDrawing(false);
     setTempElement(null);
-    return;
-  }
-
-  const newElement = {
-    ...tempElement,
-    id: Date.now() + Math.random(),
+    renderDrawing();
   };
-
-  setElements([...elements, newElement]);
-  saveDrawingState();
-
-  setIsDrawing(false);
-  setTempElement(null);
-  renderDrawing();
-};
 
   // Handle touch events for mobile
   const handleTouchStart = (e) => {
-  if (editorMode !== "draw") return;
-  
-  e.preventDefault(); // Always prevent default for touch start
-  
-  const coords = getCanvasCoordinates(e);
-  const clickedElement = findElementAtPosition(coords.x, coords.y);
-  
-  // For text tool, only open popup if not clicking on existing text
-  if (drawTool === "text") {
-    if (!clickedElement || clickedElement.type !== "text") {
-      setTextPosition(coords);
-      return;
-    }
-  }
-  
-  handleMouseDown(e);
-};
+    if (editorMode !== "draw") return;
 
- const handleTouchMove = (e) => {
-  if (editorMode !== "draw") return;
-  
-  if (isDrawing || isDraggingElement) {
-    e.preventDefault(); // Only prevent default when actually drawing/dragging
-  }
-  
-  handleMouseMove(e);
-};
+    e.preventDefault(); // Always prevent default for touch start
+
+    const coords = getCanvasCoordinates(e);
+    const clickedElement = findElementAtPosition(coords.x, coords.y);
+
+    // For text tool, only open popup if not clicking on existing text
+    if (drawTool === "text") {
+      if (!clickedElement || clickedElement.type !== "text") {
+        setTextPosition(coords);
+        return;
+      }
+    }
+
+    handleMouseDown(e);
+  };
+
+  const handleTouchMove = (e) => {
+    if (editorMode !== "draw") return;
+
+    if (isDrawing || isDraggingElement) {
+      e.preventDefault(); // Only prevent default when actually drawing/dragging
+    }
+
+    handleMouseMove(e);
+  };
 
   const handleTouchEnd = (e) => {
     if (editorMode !== "draw") return;
@@ -1206,42 +1209,42 @@ const [fontSize, setFontSize] = useState(32);
     return null;
   };
 
- const isPointInElement = (x, y, element) => {
-  if (element.type === "pen") {
-    for (let i = 0; i < element.points.length - 1; i++) {
-      const p1 = element.points[i];
-      const p2 = element.points[i + 1];
-      const distance = pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y);
-      if (distance < 20) return true;
+  const isPointInElement = (x, y, element) => {
+    if (element.type === "pen") {
+      for (let i = 0; i < element.points.length - 1; i++) {
+        const p1 = element.points[i];
+        const p2 = element.points[i + 1];
+        const distance = pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y);
+        if (distance < 20) return true;
+      }
+      return false;
+    } else if (element.type === "text") {
+      const bounds = getTextBounds(element);
+      // Make text selection area larger for easier clicking
+      return (
+        x >= bounds.x - 30 &&
+        x <= bounds.x + bounds.width + 30 &&
+        y >= bounds.y - bounds.height - 30 &&
+        y <= bounds.y + 30
+      );
+    } else if (element.type === "circle") {
+      const radius = Math.sqrt(
+        Math.pow(element.width, 2) + Math.pow(element.height, 2),
+      );
+      const distance = Math.sqrt(
+        Math.pow(x - element.x, 2) + Math.pow(y - element.y, 2),
+      );
+      return Math.abs(distance - radius) < 25;
+    } else {
+      const bounds = getElementBounds(element);
+      return (
+        x >= bounds.x - 20 &&
+        x <= bounds.x + bounds.width + 20 &&
+        y >= bounds.y - 20 &&
+        y <= bounds.y + bounds.height + 20
+      );
     }
-    return false;
-  } else if (element.type === "text") {
-    const bounds = getTextBounds(element);
-    // Make text selection area larger for easier clicking
-    return (
-      x >= bounds.x - 30 &&
-      x <= bounds.x + bounds.width + 30 &&
-      y >= bounds.y - bounds.height - 30 &&
-      y <= bounds.y + 30
-    );
-  } else if (element.type === "circle") {
-    const radius = Math.sqrt(
-      Math.pow(element.width, 2) + Math.pow(element.height, 2),
-    );
-    const distance = Math.sqrt(
-      Math.pow(x - element.x, 2) + Math.pow(y - element.y, 2),
-    );
-    return Math.abs(distance - radius) < 25;
-  } else {
-    const bounds = getElementBounds(element);
-    return (
-      x >= bounds.x - 20 &&
-      x <= bounds.x + bounds.width + 20 &&
-      y >= bounds.y - 20 &&
-      y <= bounds.y + bounds.height + 20
-    );
-  }
-};
+  };
 
   const pointToLineDistance = (x, y, x1, y1, x2, y2) => {
     const A = x - x1;
@@ -1283,7 +1286,7 @@ const [fontSize, setFontSize] = useState(32);
       text: textInput,
       x: textPosition.x,
       y: textPosition.y,
-    fontSize: fontSize, // Add this line
+      fontSize: fontSize, // Add this line
     };
 
     setElements([...elements, newElement]);
@@ -1472,79 +1475,151 @@ const [fontSize, setFontSize] = useState(32);
   // Clear canvas
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Draw all elements
+  // Draw all elements (always, regardless of mode)
   elements.forEach((element) => {
     drawElement(ctx, element, selectedElement?.id === element.id);
   });
 
   // Draw temporary element (while drawing)
-  if (tempElement) {
+  if (tempElement && editorMode === "draw") {
     drawElement(ctx, tempElement);
   }
 
   // Draw selection border for better visibility
-  if (selectedElement) {
+  if (selectedElement && editorMode === "draw") {
     const bounds = getElementBounds(selectedElement);
     ctx.strokeStyle = "#10b981";
     ctx.setLineDash([5, 5]);
     ctx.lineWidth = 2;
-    
+
     // Add a larger, more visible border for selected elements
     ctx.strokeRect(
       bounds.x - 15,
       bounds.y - 15,
       bounds.width + 30,
-      bounds.height + 30
+      bounds.height + 30,
     );
-    
+
     // Add corner handles for better visual feedback
     ctx.fillStyle = "#10b981";
     const handleSize = 8;
-    
+
     // Top-left corner
     ctx.fillRect(bounds.x - 15, bounds.y - 15, handleSize, handleSize);
     // Top-right corner
-    ctx.fillRect(bounds.x + bounds.width + 15 - handleSize, bounds.y - 15, handleSize, handleSize);
+    ctx.fillRect(
+      bounds.x + bounds.width + 15 - handleSize,
+      bounds.y - 15,
+      handleSize,
+      handleSize,
+    );
     // Bottom-left corner
-    ctx.fillRect(bounds.x - 15, bounds.y + bounds.height + 15 - handleSize, handleSize, handleSize);
+    ctx.fillRect(
+      bounds.x - 15,
+      bounds.y + bounds.height + 15 - handleSize,
+      handleSize,
+      handleSize,
+    );
     // Bottom-right corner
-    ctx.fillRect(bounds.x + bounds.width + 15 - handleSize, bounds.y + bounds.height + 15 - handleSize, handleSize, handleSize);
-    
+    ctx.fillRect(
+      bounds.x + bounds.width + 15 - handleSize,
+      bounds.y + bounds.height + 15 - handleSize,
+      handleSize,
+      handleSize,
+    );
+
     ctx.setLineDash([]);
   }
 };
 
   // FIX: Render drawings whenever elements change or editor mode changes
   useEffect(() => {
-    renderDrawing();
-  }, [elements, tempElement, selectedElement, imageDimensions, editorMode]);
+  renderDrawing();
+}, [elements, tempElement, selectedElement, imageDimensions, editorMode]);
 
   const handleSaveImage = async () => {
-    if (!imageToEdit && !preview) return;
+  if (!imageToEdit && !preview) return;
 
-    const imageSource = imageToEdit || preview;
+  const imageSource = imageToEdit || preview;
 
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
 
-    const img = new Image();
-    img.src = imageSource;
+  const img = new Image();
+  img.src = imageSource;
 
-    await new Promise((resolve) => {
-      img.onload = () => {
-        canvas.width = isCropping ? cropRect.width : img.width;
-        canvas.height = isCropping ? cropRect.height : img.height;
+  await new Promise((resolve) => {
+    img.onload = () => {
+      // Calculate final dimensions
+      let finalWidth = isCropping ? cropRect.width : img.width;
+      let finalHeight = isCropping ? cropRect.height : img.height;
+      
+      // Adjust for rotation if needed
+      if (Math.abs(rotation) === 90 || Math.abs(rotation) === 270) {
+        [finalWidth, finalHeight] = [finalHeight, finalWidth];
+      }
 
-        if (rotation !== 0) {
-          ctx.save();
-          ctx.translate(canvas.width / 2, canvas.height / 2);
-          ctx.rotate((rotation * Math.PI) / 180);
-          ctx.translate(-canvas.width / 2, -canvas.height / 2);
-        }
+      canvas.width = finalWidth;
+      canvas.height = finalHeight;
 
+      // Apply background fill
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Apply rotation and transformations
+      if (rotation !== 0) {
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate((rotation * Math.PI) / 180);
+        ctx.translate(-canvas.width / 2, -canvas.height / 2);
+      }
+
+      // Draw the base image with cropping
+      if (isCropping) {
+        ctx.drawImage(
+          img,
+          cropRect.x,
+          cropRect.y,
+          cropRect.width,
+          cropRect.height,
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        );
+      } else {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      }
+
+      if (rotation !== 0) {
+        ctx.restore();
+      }
+
+      // Apply brightness filter
+      ctx.filter = `brightness(${brightness}%)`;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.drawImage(canvas, 0, 0);
+      ctx.filter = "none"; // Reset filter
+
+      // Draw the drawings on top (if any)
+      if (drawingCanvasRef.current && elements.length > 0) {
+        const drawCanvas = drawingCanvasRef.current;
+        const tempCanvas = document.createElement("canvas");
+        const tempCtx = tempCanvas.getContext("2d");
+        
+        tempCanvas.width = drawCanvas.width;
+        tempCanvas.height = drawCanvas.height;
+        tempCtx.drawImage(drawCanvas, 0, 0);
+
+        // Apply same transformations to drawings
         if (isCropping) {
+          // Calculate scale for drawings based on crop
+          const scaleX = canvas.width / cropRect.width;
+          const scaleY = canvas.height / cropRect.height;
+          
+          // Draw drawings with crop transformation
           ctx.drawImage(
-            img,
+            tempCanvas,
             cropRect.x,
             cropRect.y,
             cropRect.width,
@@ -1555,52 +1630,24 @@ const [fontSize, setFontSize] = useState(32);
             canvas.height,
           );
         } else {
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          // Draw drawings without crop (full image)
+          ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
         }
+      }
 
-        if (rotation !== 0) {
-          ctx.restore();
-        }
-
-        ctx.filter = `brightness(${brightness}%)`;
-        ctx.globalCompositeOperation = "source-over";
-        ctx.drawImage(canvas, 0, 0);
-
-        if (editorMode === "draw" && drawingCanvasRef.current) {
-          const drawCanvas = drawingCanvasRef.current;
-          const tempCanvas = document.createElement("canvas");
-          const tempCtx = tempCanvas.getContext("2d");
-          tempCanvas.width = drawCanvas.width;
-          tempCanvas.height = drawCanvas.height;
-
-          tempCtx.drawImage(drawCanvas, 0, 0);
-
-          ctx.drawImage(
-            tempCanvas,
-            isCropping ? cropRect.x : 0,
-            isCropping ? cropRect.y : 0,
-            isCropping ? cropRect.width : canvas.width,
-            isCropping ? cropRect.height : canvas.height,
-            0,
-            0,
-            canvas.width,
-            canvas.height,
-          );
-        }
-
-        canvas.toBlob(
-          (blob) => {
-            const url = URL.createObjectURL(blob);
-            onImageCaptured(url);
-            onClose();
-          },
-          "image/png",
-          0.9,
-        );
-        resolve();
-      };
-    });
-  };
+      canvas.toBlob(
+        (blob) => {
+          const url = URL.createObjectURL(blob);
+          onImageCaptured(url);
+          onClose();
+        },
+        "image/png",
+        0.9,
+      );
+      resolve();
+    };
+  });
+};
 
   const handleSaveVideo = () => {
     if (preview) {
@@ -1615,170 +1662,149 @@ const [fontSize, setFontSize] = useState(32);
 
   // FIXED: Correct crop overlay rendering with proper coordinate conversion
   const renderCropOverlay = () => {
-  if (!containerRef.current || !imageDimensions.width || !isCropping)
-    return null;
+    if (!containerRef.current || !imageDimensions.width || !isCropping)
+      return null;
 
-  const rect = containerRef.current.getBoundingClientRect();
+    const rect = containerRef.current.getBoundingClientRect();
 
-  // Calculate crop rectangle position on screen using display scale and offset
-  const screenX = cropRect.x * displayScale + displayOffset.x;
-  const screenY = cropRect.y * displayScale + displayOffset.y;
-  const screenWidth = cropRect.width * displayScale;
-  const screenHeight = cropRect.height * displayScale;
+    // Calculate crop rectangle position on screen using display scale and offset
+    const screenX = cropRect.x * displayScale + displayOffset.x;
+    const screenY = cropRect.y * displayScale + displayOffset.y;
+    const screenWidth = cropRect.width * displayScale;
+    const screenHeight = cropRect.height * displayScale;
 
-  const handleMoveStart = (startX, startY) => {
-    const startCrop = { ...cropRect };
+    const handleMoveStart = (startX, startY) => {
+      const startCrop = { ...cropRect };
 
-    const handleMove = (moveX, moveY) => {
-      const deltaX = (moveX - startX) / displayScale;
-      const deltaY = (moveY - startY) / displayScale;
+      const handleMove = (moveX, moveY) => {
+        const deltaX = (moveX - startX) / displayScale;
+        const deltaY = (moveY - startY) / displayScale;
 
-      setCropRect({
-        x: Math.max(
-          0,
-          Math.min(
-            imageDimensions.width - startCrop.width,
-            startCrop.x + deltaX
-          )
-        ),
-        y: Math.max(
-          0,
-          Math.min(
-            imageDimensions.height - startCrop.height,
-            startCrop.y + deltaY
-          )
-        ),
-        width: startCrop.width,
-        height: startCrop.height,
-      });
-    };
+        setCropRect({
+          x: Math.max(
+            0,
+            Math.min(
+              imageDimensions.width - startCrop.width,
+              startCrop.x + deltaX,
+            ),
+          ),
+          y: Math.max(
+            0,
+            Math.min(
+              imageDimensions.height - startCrop.height,
+              startCrop.y + deltaY,
+            ),
+          ),
+          width: startCrop.width,
+          height: startCrop.height,
+        });
+      };
 
-    const handleMoveEnd = () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("touchmove", handleTouchMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.removeEventListener("touchend", handleTouchEnd);
-    };
+      const handleMoveEnd = () => {
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("touchmove", handleTouchMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+        document.removeEventListener("touchend", handleTouchEnd);
+      };
 
-    const handleMouseMove = (e) => {
-      handleMove(e.clientX, e.clientY);
-    };
+      const handleMouseMove = (e) => {
+        handleMove(e.clientX, e.clientY);
+      };
 
-    const handleTouchMove = (e) => {
-      e.preventDefault();
-      const touch = e.touches[0];
-      handleMove(touch.clientX, touch.clientY);
-    };
-
-    const handleMouseUp = () => {
-      handleMoveEnd();
-    };
-
-    const handleTouchEnd = () => {
-      handleMoveEnd();
-    };
-
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("touchmove", handleTouchMove, {
-      passive: false,
-    });
-    document.addEventListener("mouseup", handleMouseUp);
-    document.addEventListener("touchend", handleTouchEnd);
-  };
-
-  const handleCornerStart = (corner, startX, startY) => {
-    const startCrop = { ...cropRect };
-
-    const handleMove = (moveX, moveY) => {
-      const deltaX = (moveX - startX) / displayScale;
-      const deltaY = (moveY - startY) / displayScale;
-
-      let newWidth = startCrop.width;
-      let newHeight = startCrop.height;
-      let newX = startCrop.x;
-      let newY = startCrop.y;
-
-      if (corner === "nw") {
-        newWidth = Math.max(100, startCrop.width - deltaX);
-        newHeight = Math.max(100, startCrop.height - deltaY);
-        newX = startCrop.x + deltaX;
-        newY = startCrop.y + deltaY;
-      } else if (corner === "ne") {
-        newWidth = Math.max(100, startCrop.width + deltaX);
-        newHeight = Math.max(100, startCrop.height - deltaY);
-        newY = startCrop.y + deltaY;
-      } else if (corner === "sw") {
-        newWidth = Math.max(100, startCrop.width - deltaX);
-        newHeight = Math.max(100, startCrop.height + deltaY);
-        newX = startCrop.x + deltaX;
-      } else if (corner === "se") {
-        newWidth = Math.max(100, startCrop.width + deltaX);
-        newHeight = Math.max(100, startCrop.height + deltaY);
-      }
-
-      setCropRect({
-        x: Math.max(0, Math.min(imageDimensions.width - newWidth, newX)),
-        y: Math.max(0, Math.min(imageDimensions.height - newHeight, newY)),
-        width: newWidth,
-        height: newHeight,
-      });
-    };
-
-    const handleMoveEnd = () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("touchmove", handleTouchMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.removeEventListener("touchend", handleTouchEnd);
-    };
-
-    const handleMouseMove = (e) => {
-      handleMove(e.clientX, e.clientY);
-    };
-
-    const handleTouchMove = (e) => {
-      e.preventDefault();
-      const touch = e.touches[0];
-      handleMove(touch.clientX, touch.clientY);
-    };
-
-    const handleMouseUp = () => {
-      handleMoveEnd();
-    };
-
-    const handleTouchEnd = () => {
-      handleMoveEnd();
-    };
-
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("touchmove", handleTouchMove, {
-      passive: false,
-    });
-    document.addEventListener("mouseup", handleMouseUp);
-    document.addEventListener("touchend", handleTouchEnd);
-  };
-
-  return (
-    <div
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        cursor: "move",
-        zIndex: 10,
-      }}
-      onMouseDown={(e) => {
-        e.stopPropagation();
-        handleMoveStart(e.clientX, e.clientY);
-      }}
-      onTouchStart={(e) => {
-        e.stopPropagation();
+      const handleTouchMove = (e) => {
+        e.preventDefault();
         const touch = e.touches[0];
-        handleMoveStart(touch.clientX, touch.clientY);
-      }}
-    >
-      {/* Dark overlay outside crop area */}
+        handleMove(touch.clientX, touch.clientY);
+      };
+
+      const handleMouseUp = () => {
+        handleMoveEnd();
+      };
+
+      const handleTouchEnd = () => {
+        handleMoveEnd();
+      };
+
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("touchmove", handleTouchMove, {
+        passive: false,
+      });
+      document.addEventListener("mouseup", handleMouseUp);
+      document.addEventListener("touchend", handleTouchEnd);
+    };
+
+    const handleCornerStart = (corner, startX, startY) => {
+      const startCrop = { ...cropRect };
+
+      const handleMove = (moveX, moveY) => {
+        const deltaX = (moveX - startX) / displayScale;
+        const deltaY = (moveY - startY) / displayScale;
+
+        let newWidth = startCrop.width;
+        let newHeight = startCrop.height;
+        let newX = startCrop.x;
+        let newY = startCrop.y;
+
+        if (corner === "nw") {
+          newWidth = Math.max(100, startCrop.width - deltaX);
+          newHeight = Math.max(100, startCrop.height - deltaY);
+          newX = startCrop.x + deltaX;
+          newY = startCrop.y + deltaY;
+        } else if (corner === "ne") {
+          newWidth = Math.max(100, startCrop.width + deltaX);
+          newHeight = Math.max(100, startCrop.height - deltaY);
+          newY = startCrop.y + deltaY;
+        } else if (corner === "sw") {
+          newWidth = Math.max(100, startCrop.width - deltaX);
+          newHeight = Math.max(100, startCrop.height + deltaY);
+          newX = startCrop.x + deltaX;
+        } else if (corner === "se") {
+          newWidth = Math.max(100, startCrop.width + deltaX);
+          newHeight = Math.max(100, startCrop.height + deltaY);
+        }
+
+        setCropRect({
+          x: Math.max(0, Math.min(imageDimensions.width - newWidth, newX)),
+          y: Math.max(0, Math.min(imageDimensions.height - newHeight, newY)),
+          width: newWidth,
+          height: newHeight,
+        });
+      };
+
+      const handleMoveEnd = () => {
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("touchmove", handleTouchMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+        document.removeEventListener("touchend", handleTouchEnd);
+      };
+
+      const handleMouseMove = (e) => {
+        handleMove(e.clientX, e.clientY);
+      };
+
+      const handleTouchMove = (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        handleMove(touch.clientX, touch.clientY);
+      };
+
+      const handleMouseUp = () => {
+        handleMoveEnd();
+      };
+
+      const handleTouchEnd = () => {
+        handleMoveEnd();
+      };
+
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("touchmove", handleTouchMove, {
+        passive: false,
+      });
+      document.addEventListener("mouseup", handleMouseUp);
+      document.addEventListener("touchend", handleTouchEnd);
+    };
+
+    return (
       <div
         style={{
           position: "absolute",
@@ -1786,74 +1812,95 @@ const [fontSize, setFontSize] = useState(32);
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          cursor: "move",
+          zIndex: 10,
         }}
-      />
-
-      {/* Crop rectangle */}
-      <div
-        style={{
-          position: "absolute",
-          left: `${screenX}px`,
-          top: `${screenY}px`,
-          width: `${screenWidth}px`,
-          height: `${screenHeight}px`,
-          border: "2px solid white",
-          boxSizing: "border-box",
-          pointerEvents: "none",
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          handleMoveStart(e.clientX, e.clientY);
         }}
-      />
+        onTouchStart={(e) => {
+          e.stopPropagation();
+          const touch = e.touches[0];
+          handleMoveStart(touch.clientX, touch.clientY);
+        }}
+      >
+        {/* Dark overlay outside crop area */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+          }}
+        />
 
-      {/* Crop corners */}
-      {["nw", "ne", "sw", "se"].map((corner) => {
-        const style = {
-          position: "absolute",
-          width: "40px", // Increased size for better touch target
-          height: "40px", // Increased size for better touch target
-          backgroundColor: "white",
-          border: "2px solid #10b981",
-          borderRadius: "4px",
-          pointerEvents: "auto",
-          touchAction: "none", // Important for mobile touch handling
-        };
+        {/* Crop rectangle */}
+        <div
+          style={{
+            position: "absolute",
+            left: `${screenX}px`,
+            top: `${screenY}px`,
+            width: `${screenWidth}px`,
+            height: `${screenHeight}px`,
+            border: "2px solid white",
+            boxSizing: "border-box",
+            pointerEvents: "none",
+          }}
+        />
 
-        if (corner === "nw") {
-          style.top = `${screenY - 20}px`;
-          style.left = `${screenX - 20}px`;
-          style.cursor = "nw-resize";
-        } else if (corner === "ne") {
-          style.top = `${screenY - 20}px`;
-          style.left = `${screenX + screenWidth - 20}px`;
-          style.cursor = "ne-resize";
-        } else if (corner === "sw") {
-          style.top = `${screenY + screenHeight - 20}px`;
-          style.left = `${screenX - 20}px`;
-          style.cursor = "sw-resize";
-        } else if (corner === "se") {
-          style.top = `${screenY + screenHeight - 20}px`;
-          style.left = `${screenX + screenWidth - 20}px`;
-          style.cursor = "se-resize";
-        }
+        {/* Crop corners */}
+        {["nw", "ne", "sw", "se"].map((corner) => {
+          const style = {
+            position: "absolute",
+            width: "40px", // Increased size for better touch target
+            height: "40px", // Increased size for better touch target
+            backgroundColor: "white",
+            border: "2px solid #10b981",
+            borderRadius: "4px",
+            pointerEvents: "auto",
+            touchAction: "none", // Important for mobile touch handling
+          };
 
-        return (
-          <div
-            key={corner}
-            style={style}
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              handleCornerStart(corner, e.clientX, e.clientY);
-            }}
-            onTouchStart={(e) => {
-              e.stopPropagation();
-              const touch = e.touches[0];
-              handleCornerStart(corner, touch.clientX, touch.clientY);
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-};
+          if (corner === "nw") {
+            style.top = `${screenY - 20}px`;
+            style.left = `${screenX - 20}px`;
+            style.cursor = "nw-resize";
+          } else if (corner === "ne") {
+            style.top = `${screenY - 20}px`;
+            style.left = `${screenX + screenWidth - 20}px`;
+            style.cursor = "ne-resize";
+          } else if (corner === "sw") {
+            style.top = `${screenY + screenHeight - 20}px`;
+            style.left = `${screenX - 20}px`;
+            style.cursor = "sw-resize";
+          } else if (corner === "se") {
+            style.top = `${screenY + screenHeight - 20}px`;
+            style.left = `${screenX + screenWidth - 20}px`;
+            style.cursor = "se-resize";
+          }
+
+          return (
+            <div
+              key={corner}
+              style={style}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                handleCornerStart(corner, e.clientX, e.clientY);
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                const touch = e.touches[0];
+                handleCornerStart(corner, touch.clientX, touch.clientY);
+              }}
+            />
+          );
+        })}
+      </div>
+    );
+  };
 
   const resetStates = () => {
     setPreview(null);
@@ -1897,19 +1944,19 @@ const [fontSize, setFontSize] = useState(32);
         alignItems: "center",
         justifyContent: "center",
         zIndex: 20000,
-          overflowY: "auto", // Enable scrolling
-      WebkitOverflowScrolling: "touch", //
+        overflowY: "auto", // Enable scrolling
+        WebkitOverflowScrolling: "touch", //
       }}
       onClick={() => {
-    // Close text popup if open
-    if (textPosition) {
-      setTextPosition(null);
-      setTextInput("");
-    } else if (!isCropping && !textPosition && !processingImage) {
-      resetStates();
-      onClose();
-    }
-  }}
+        // Close text popup if open
+        if (textPosition) {
+          setTextPosition(null);
+          setTextInput("");
+        } else if (!isCropping && !textPosition && !processingImage) {
+          resetStates();
+          onClose();
+        }
+      }}
     >
       {/* Hidden file inputs for Android native camera */}
       <input
@@ -2071,28 +2118,37 @@ const [fontSize, setFontSize] = useState(32);
                 WebkitUserSelect: "none",
                 touchAction: "none",
               }}
-             onMouseDown={editorMode === "draw" ? handleMouseDown : undefined}
-  onMouseMove={editorMode === "draw" ? handleMouseMove : undefined}
-  onMouseUp={editorMode === "draw" ? handleMouseUp : undefined}
-  onTouchStart={editorMode === "draw" ? handleTouchStart : undefined}
-  onTouchMove={editorMode === "draw" ? handleTouchMove : undefined}
-  onTouchEnd={editorMode === "draw" ? handleTouchEnd : undefined}
-  onTouchCancel={editorMode === "draw" ? handleTouchEnd : undefined}
-             onClick={
-    editorMode === "draw" && drawTool === "text"
-      ? (e) => {
-          // Only open text popup if not already open and not clicking on existing element
-          const coords = getCanvasCoordinates(e);
-          const clickedElement = findElementAtPosition(coords.x, coords.y);
-          
-          // Don't open text popup if we're currently dragging or have a selected element
-          if (!textPosition && !isDraggingElement && (!clickedElement || clickedElement.type !== "text")) {
-            setTextPosition(coords);
-            setSelectedElement(null);
+              onMouseDown={editorMode === "draw" ? handleMouseDown : undefined}
+              onMouseMove={editorMode === "draw" ? handleMouseMove : undefined}
+              onMouseUp={editorMode === "draw" ? handleMouseUp : undefined}
+              onTouchStart={
+                editorMode === "draw" ? handleTouchStart : undefined
+              }
+              onTouchMove={editorMode === "draw" ? handleTouchMove : undefined}
+              onTouchEnd={editorMode === "draw" ? handleTouchEnd : undefined}
+              onTouchCancel={editorMode === "draw" ? handleTouchEnd : undefined}
+              onClick={
+      editorMode === "draw" && drawTool === "text"
+        ? (e) => {
+            // Only open text popup if not already open and not clicking on existing element
+            const coords = getCanvasCoordinates(e);
+            const clickedElement = findElementAtPosition(
+              coords.x,
+              coords.y,
+            );
+
+            // Don't open text popup if we're currently dragging or have a selected element
+            if (
+              !textPosition &&
+              !isDraggingElement &&
+              (!clickedElement || clickedElement.type !== "text")
+            ) {
+              setTextPosition(coords);
+              setSelectedElement(null);
+            }
           }
-        }
-      : undefined
-  }
+        : undefined
+    }
             >
               <img
                 src={imageToEdit || preview}
@@ -2106,207 +2162,188 @@ const [fontSize, setFontSize] = useState(32);
                   pointerEvents: "none",
                 }}
               />
+              {editorMode === "crop" && renderCropOverlay()}
 
-              {showDeleteZone && (
+             <canvas
+      ref={drawingCanvasRef}
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        cursor: editorMode === "draw" ? (drawTool === "text" ? "text" : "crosshair") : "default",
+        pointerEvents: editorMode === "draw" ? "auto" : "none",
+        opacity: editorMode === "draw" ? 1 : 1, // Always fully visible
+      }}
+    />
+
+              {textPosition && (
                 <div
+                  className="text-popup"
                   style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: "60px",
-                    backgroundColor: isOverDeleteZone
-                      ? "rgba(239, 68, 68, 0.8)"
-                      : "rgba(239, 68, 68, 0.4)",
+                    position: "fixed",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    backgroundColor: "rgba(0, 0, 0, 0.95)",
+                    padding: window.innerWidth < 768 ? "0.75rem" : "1rem",
+                    borderRadius: "0.5rem",
                     display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transition: "background-color 0.3s ease",
-                    zIndex: 50,
+                    flexDirection: "column",
+                    gap: "0.5rem",
+                    minWidth: window.innerWidth < 768 ? "90vw" : "300px",
+                    width: window.innerWidth < 768 ? "90%" : "80%",
+                    maxWidth: window.innerWidth < 768 ? "400px" : "400px",
+                    zIndex: 100,
+                    boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
                   }}
                 >
+                  <span
+                    style={{
+                      color: "white",
+                      fontWeight: "600",
+                      fontSize: window.innerWidth < 768 ? "0.95rem" : "1rem",
+                      marginBottom: "0.5rem",
+                      textAlign: "center",
+                    }}
+                  >
+                    Add Text
+                  </span>
+
+                  {/* Font Size Range Selector */}
+                  <div style={{ marginBottom: "0.5rem" }}>
+                    <label
+                      style={{
+                        color: "white",
+                        fontSize:
+                          window.innerWidth < 768 ? "0.85rem" : "0.9rem",
+                        display: "block",
+                        marginBottom: "0.25rem",
+                      }}
+                    >
+                      Font Size: {fontSize}px
+                    </label>
+                    <input
+                      type="range"
+                      min="12"
+                      max="72"
+                      value={fontSize}
+                      onChange={(e) => setFontSize(parseInt(e.target.value))}
+                      style={{
+                        width: "100%",
+                        height: "6px",
+                        borderRadius: "3px",
+                        background: "#374151",
+                        outline: "none",
+                        WebkitAppearance: "none",
+                        appearance: "none",
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginTop: "0.25rem",
+                      }}
+                    >
+                      <span style={{ color: "#9CA3AF", fontSize: "0.7rem" }}>
+                        12px
+                      </span>
+                      <span style={{ color: "#9CA3AF", fontSize: "0.7rem" }}>
+                        72px
+                      </span>
+                    </div>
+                  </div>
+
+                  <input
+                    type="text"
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                    placeholder="Type text and press Enter..."
+                    autoFocus
+                    style={{
+                      padding: window.innerWidth < 768 ? "0.625rem" : "0.75rem",
+                      borderRadius: "0.375rem",
+                      border: "1px solid #4b5563",
+                      backgroundColor: "rgba(255, 255, 255, 0.1)",
+                      color: "white",
+                      fontSize: window.innerWidth < 768 ? "0.95rem" : "1rem",
+                      width: "100%",
+                      boxSizing: "border-box",
+                    }}
+                    onKeyPress={handleKeyPress}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+
                   <div
                     style={{
                       display: "flex",
-                      alignItems: "center",
                       gap: "0.5rem",
-                      color: "white",
-                      fontWeight: "600",
-                      fontSize: "0.9rem",
+                      justifyContent: "flex-end",
+                      marginTop: "0.75rem",
                     }}
                   >
-                    <MdDelete size={28} />
-                    <span>Drag here to delete</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTextPosition(null);
+                        setTextInput("");
+                      }}
+                      style={{
+                        padding:
+                          window.innerWidth < 768
+                            ? "0.5rem 1rem"
+                            : "0.75rem 1.5rem",
+                        backgroundColor: "rgba(107, 114, 128, 0.7)",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "0.375rem",
+                        cursor: "pointer",
+                        fontSize:
+                          window.innerWidth < 768 ? "0.85rem" : "0.9rem",
+                        flex: window.innerWidth < 768 ? 1 : "none",
+                        minWidth: window.innerWidth < 768 ? "80px" : "auto",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleTextSubmit();
+                      }}
+                      disabled={!textInput.trim()}
+                      style={{
+                        padding:
+                          window.innerWidth < 768
+                            ? "0.5rem 1rem"
+                            : "0.75rem 1.5rem",
+                        backgroundColor: textInput.trim()
+                          ? "#10b981"
+                          : "#4b5563",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "0.375rem",
+                        cursor: textInput.trim() ? "pointer" : "not-allowed",
+                        fontSize:
+                          window.innerWidth < 768 ? "0.85rem" : "0.9rem",
+                        opacity: textInput.trim() ? 1 : 0.6,
+                        flex: window.innerWidth < 768 ? 1 : "none",
+                        minWidth: window.innerWidth < 768 ? "80px" : "auto",
+                      }}
+                    >
+                      Add
+                    </button>
                   </div>
                 </div>
               )}
-
-              {editorMode === "crop" && renderCropOverlay()}
-
-              {editorMode === "draw" && (
-                <canvas
-                  ref={drawingCanvasRef}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    height: "100%",
-                    cursor: drawTool === "text" ? "text" : "crosshair",
-                    pointerEvents: "none", // Let the container handle events
-                  }}
-                />
-              )}
-
-   {textPosition && (
-  <div
-    className="text-popup"
-    style={{
-      position: "fixed",
-      top: "50%",
-      left: "50%",
-      transform: "translate(-50%, -50%)",
-      backgroundColor: "rgba(0, 0, 0, 0.95)",
-      padding: window.innerWidth < 768 ? "0.75rem" : "1rem",
-      borderRadius: "0.5rem",
-      display: "flex",
-      flexDirection: "column",
-      gap: "0.5rem",
-      minWidth: window.innerWidth < 768 ? "90vw" : "300px",
-      width: window.innerWidth < 768 ? "90%" : "80%",
-      maxWidth: window.innerWidth < 768 ? "400px" : "400px",
-      zIndex: 100,
-      boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
-      border: "1px solid rgba(255,255,255,0.1)"
-    }}
-    onClick={(e) => {
-      e.stopPropagation();
-      e.preventDefault();
-    }}
-  >
-    <span
-      style={{
-        color: "white",
-        fontWeight: "600",
-        fontSize: window.innerWidth < 768 ? "0.95rem" : "1rem",
-        marginBottom: "0.5rem",
-        textAlign: "center"
-      }}
-    >
-      Add Text
-    </span>
-    
-    {/* Font Size Range Selector */}
-    <div style={{ marginBottom: "0.5rem" }}>
-      <label
-        style={{
-          color: "white",
-          fontSize: window.innerWidth < 768 ? "0.85rem" : "0.9rem",
-          display: "block",
-          marginBottom: "0.25rem"
-        }}
-      >
-        Font Size: {fontSize}px
-      </label>
-      <input
-        type="range"
-        min="12"
-        max="72"
-        value={fontSize}
-        onChange={(e) => setFontSize(parseInt(e.target.value))}
-        style={{
-          width: "100%",
-          height: "6px",
-          borderRadius: "3px",
-          background: "#374151",
-          outline: "none",
-          WebkitAppearance: "none",
-          appearance: "none"
-        }}
-        onClick={(e) => e.stopPropagation()}
-      />
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        marginTop: "0.25rem"
-      }}>
-        <span style={{ color: "#9CA3AF", fontSize: "0.7rem" }}>12px</span>
-        <span style={{ color: "#9CA3AF", fontSize: "0.7rem" }}>72px</span>
-      </div>
-    </div>
-    
-    <input
-      type="text"
-      value={textInput}
-      onChange={(e) => setTextInput(e.target.value)}
-      placeholder="Type text and press Enter..."
-      autoFocus
-      style={{
-        padding: window.innerWidth < 768 ? "0.625rem" : "0.75rem",
-        borderRadius: "0.375rem",
-        border: "1px solid #4b5563",
-        backgroundColor: "rgba(255, 255, 255, 0.1)",
-        color: "white",
-        fontSize: window.innerWidth < 768 ? "0.95rem" : "1rem",
-        width: "100%",
-        boxSizing: "border-box"
-      }}
-      onKeyPress={handleKeyPress}
-      onClick={(e) => e.stopPropagation()}
-    />
-    
-    <div
-      style={{
-        display: "flex",
-        gap: "0.5rem",
-        justifyContent: "flex-end",
-        marginTop: "0.75rem"
-      }}
-    >
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setTextPosition(null);
-          setTextInput("");
-        }}
-        style={{
-          padding: window.innerWidth < 768 ? "0.5rem 1rem" : "0.75rem 1.5rem",
-          backgroundColor: "rgba(107, 114, 128, 0.7)",
-          color: "white",
-          border: "none",
-          borderRadius: "0.375rem",
-          cursor: "pointer",
-          fontSize: window.innerWidth < 768 ? "0.85rem" : "0.9rem",
-          flex: window.innerWidth < 768 ? 1 : "none",
-          minWidth: window.innerWidth < 768 ? "80px" : "auto"
-        }}
-      >
-        Cancel
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          handleTextSubmit();
-        }}
-        disabled={!textInput.trim()}
-        style={{
-          padding: window.innerWidth < 768 ? "0.5rem 1rem" : "0.75rem 1.5rem",
-          backgroundColor: textInput.trim() ? "#10b981" : "#4b5563",
-          color: "white",
-          border: "none",
-          borderRadius: "0.375rem",
-          cursor: textInput.trim() ? "pointer" : "not-allowed",
-          fontSize: window.innerWidth < 768 ? "0.85rem" : "0.9rem",
-          opacity: textInput.trim() ? 1 : 0.6,
-          flex: window.innerWidth < 768 ? 1 : "none",
-          minWidth: window.innerWidth < 768 ? "80px" : "auto"
-        }}
-      >
-        Add
-      </button>
-    </div>
-  </div>
-)}
             </div>
           ) : mode === "video" && preview ? (
             <div
@@ -2522,52 +2559,6 @@ const [fontSize, setFontSize] = useState(32);
                   <p style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
                     {cameraError}
                   </p>
-
-                  {isAndroid() && (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "0.75rem",
-                        width: "100%",
-                        maxWidth: "300px",
-                      }}
-                    >
-                      <button
-                        onClick={() => {
-                          setCameraError(null);
-                          initializeCamera();
-                        }}
-                        style={{
-                          padding: "0.75rem 1.5rem",
-                          backgroundColor: "#10b981",
-                          color: "white",
-                          border: "none",
-                          borderRadius: "0.5rem",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Retry Web Camera
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setCameraAccessMethod("native");
-                          setCameraError(null);
-                        }}
-                        style={{
-                          padding: "0.75rem 1.5rem",
-                          backgroundColor: "#3b82f6",
-                          color: "white",
-                          border: "none",
-                          borderRadius: "0.5rem",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Use Native Camera
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -2710,439 +2701,567 @@ const [fontSize, setFontSize] = useState(32);
         {/* Editor Controls */}
         {/* Editor Controls */}
         {(isCropping || (mode === "photo" && preview)) && (
-          <div
-            style={{
-              backgroundColor: "#111827",
-              borderTop: "1px solid #374151",
-              padding: "0.75rem",
-              flexShrink: 0, // Prevent shrinking
-            }}
-          >
-            {/* Compact Mode Selection */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: "0.375rem",
-                marginBottom: "0.75rem",
-              }}
-            >
-              <button
-                onClick={() => setEditorMode("crop")}
-                style={{
-                  flex: 1,
-                  padding: "0.625rem 0.25rem",
-                  backgroundColor:
-                    editorMode === "crop" ? "#10b981" : "#374151",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  fontSize: "0.75rem",
-                  cursor: "pointer",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: "0.25rem",
-                  minHeight: "52px",
-                }}
-              >
-                <MdCrop size={16} />
-                Crop
-              </button>
-
-              <button
-                onClick={() => setEditorMode("draw")}
-                style={{
-                  flex: 1,
-                  padding: "0.625rem 0.25rem",
-                  backgroundColor:
-                    editorMode === "draw" ? "#10b981" : "#374151",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  fontSize: "0.75rem",
-                  cursor: "pointer",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: "0.25rem",
-                  minHeight: "52px",
-                }}
-              >
-                <MdBrush size={16} />
-                Draw
-              </button>
-
-              <button
-                onClick={() => setEditorMode("filter")}
-                style={{
-                  flex: 1,
-                  padding: "0.625rem 0.25rem",
-                  backgroundColor:
-                    editorMode === "filter" ? "#10b981" : "#374151",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  fontSize: "0.75rem",
-                  cursor: "pointer",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: "0.25rem",
-                  minHeight: "52px",
-                }}
-              >
-                <MdFilterAlt size={16} />
-                Filter
-              </button>
-            </div>
-
-            {/* Drawing Tools */}
-            {editorMode === "draw" && (
+          <>
+            {/* Top Action Buttons - Visible only in draw mode */}
+            {editorMode === "draw" ? (
               <div
                 style={{
-                  backgroundColor: "#1f2937",
-                  borderRadius: "8px",
-                  padding: "0.75rem",
-                  marginBottom: "0.75rem",
+                  position: "absolute",
+                  top: "10px",
+                  left: "0",
+                  right: "0",
+                  zIndex: "30",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "0 20px",
+                  pointerEvents: "none",
+                }}
+              >
+                {/* Cancel Button (Cross Icon) - Goes back to main mode selection */}
+                <button
+                  onClick={() => setEditorMode("crop")}
+                  style={{
+                    width: "30px",
+                    height: "30px",
+                    borderRadius: "50%",
+                    backgroundColor: "rgba(239, 68, 68, 0.9)",
+                    color: "white",
+                    border: "none",
+                    cursor: "pointer",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+                    pointerEvents: "auto",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backdropFilter: "blur(10px)",
+                    transition: "all 0.2s ease",
+                  }}
+                  title="Cancel Drawing"
+                >
+                  <MdClose size={13} />
+                </button>
+
+                {/* Done Button (Check Icon) - Saves drawing and goes back to crop mode */}
+                <button
+                  onClick={() => {
+                    saveDrawingState();
+                    setEditorMode("crop");
+                  }}
+                  style={{
+                    width: "30px",
+                    height: "30px",
+                    borderRadius: "50%",
+                    background:
+                      "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    color: "white",
+                    border: "none",
+                    cursor: "pointer",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+                    pointerEvents: "auto",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backdropFilter: "blur(10px)",
+                    transition: "all 0.2s ease",
+                  }}
+                  title="Done Drawing"
+                >
+                  <MdCheck size={13} />
+                </button>
+              </div>
+            ) : (
+              /* Main Mode Selection Bar - Only show when NOT in draw mode */
+              <div
+                style={{
+                  position: "absolute",
+                  top: "10px",
+                  left: "0",
+                  right: "0",
+                  zIndex: "30",
+                  display: "flex",
+                  justifyContent: "center",
+                  pointerEvents: "none",
                 }}
               >
                 <div
                   style={{
+                    backgroundColor: "rgba(0, 0, 0, 0.7)",
+                    backdropFilter: "blur(10px)",
+                    borderRadius: "50px",
+                    padding: "8px 16px",
                     display: "flex",
-                    gap: "0.375rem",
-                    marginBottom: "0.75rem",
+                    gap: "8px",
+                    alignItems: "center",
+                    pointerEvents: "auto",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
                   }}
                 >
                   {[
-                    { id: "pen", icon: <MdBrush size={14} />, label: "Pen" },
+                    { id: "crop", icon: <MdCrop size={22} />, title: "Crop" },
+                    { id: "draw", icon: <MdBrush size={22} />, title: "Draw" },
+                    {
+                      id: "filter",
+                      icon: <MdFilterAlt size={22} />,
+                      title: "Filter",
+                    },
+                  ].map((modeItem) => (
+                    <button
+                      key={modeItem.id}
+                      onClick={() => setEditorMode(modeItem.id)}
+                      style={{
+                        width: "30px",
+                        height: "30px",
+                        borderRadius: "50%",
+                        backgroundColor:
+                          editorMode === modeItem.id
+                            ? "#10b981"
+                            : "rgba(255, 255, 255, 0.1)",
+                        color: "white",
+                        border: "none",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        fontSize: "22px",
+                        transition: "all 0.2s ease",
+                      }}
+                      title={modeItem.title}
+                    >
+                      {modeItem.icon}
+                    </button>
+                  ))}
+
+                  {/* Divider */}
+                  <div
+                    style={{
+                      width: "1px",
+                      height: "30px",
+                      backgroundColor: "rgba(255, 255, 255, 0.3)",
+                      margin: "0 4px",
+                    }}
+                  />
+
+                  {/* Rotate Icons */}
+                  <button
+                    onClick={() => handleRotate(-90)}
+                    style={{
+                      width: "30px",
+                      height: "30px",
+                      borderRadius: "50%",
+                      backgroundColor: "rgba(255, 255, 255, 0.1)",
+                      color: "white",
+                      border: "none",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      fontSize: "20px",
+                      transition: "all 0.2s ease",
+                    }}
+                    title="Rotate Left"
+                  >
+                    <MdRotateLeft />
+                  </button>
+
+                  <button
+                    onClick={() => handleRotate(90)}
+                    style={{
+                      width: "30px",
+                      height: "30px",
+                      borderRadius: "50%",
+                      backgroundColor: "rgba(255, 255, 255, 0.1)",
+                      color: "white",
+                      border: "none",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      fontSize: "20px",
+                      transition: "all 0.2s ease",
+                    }}
+                    title="Rotate Right"
+                  >
+                    <MdRotateRight />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Drawing Tools Panel - Updated with vertical color slider */}
+            {editorMode === "draw" && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: window.innerWidth < 768 ? "2px" : "22px",
+                  left: "0",
+                  right: "0",
+                  zIndex: "30",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "12px",
+                  pointerEvents: "none",
+                }}
+              >
+                {/* Drawing Tools Row */}
+                <div
+                  style={{
+                    backgroundColor: "rgba(0, 0, 0, 0.7)",
+                    backdropFilter: "blur(10px)",
+                    borderRadius: "50px",
+                    padding: "10px 20px",
+                    display: "flex",
+                    gap: "8px",
+                    alignItems: "center",
+                    pointerEvents: "auto",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+                  }}
+                >
+                  {[
+                    { id: "pen", icon: <MdBrush size={13} />, title: "Pen" },
                     {
                       id: "arrow",
-                      icon: <FaArrowRight size={12} />,
-                      label: "Arrow",
+                      icon: <FaArrowRight size={13} />,
+                      title: "Arrow",
                     },
                     {
                       id: "circle",
-                      icon: <MdCircle size={14} />,
-                      label: "Circle",
+                      icon: <MdCircle size={13} />,
+                      title: "Circle",
                     },
                     {
                       id: "square",
-                      icon: <MdSquare size={14} />,
-                      label: "Square",
+                      icon: <MdSquare size={13} />,
+                      title: "Square",
                     },
                     {
                       id: "text",
-                      icon: <MdTextFields size={14} />,
-                      label: "Text",
+                      icon: <MdTextFields size={13} />,
+                      title: "Text",
                     },
                   ].map((tool) => (
                     <button
                       key={tool.id}
                       onClick={() => setDrawTool(tool.id)}
                       style={{
-                        flex: 1,
-                        padding: "0.5rem 0.25rem",
+                        width: "30px",
+                        height: "30px",
+                        borderRadius: "50%",
                         backgroundColor:
-                          drawTool === tool.id ? "#10b981" : "#374151",
+                          drawTool === tool.id
+                            ? "#3b82f6"
+                            : "rgba(255, 255, 255, 0.1)",
                         color: "white",
                         border: "none",
-                        borderRadius: "6px",
-                        cursor: "pointer",
                         display: "flex",
-                        flexDirection: "column",
                         alignItems: "center",
-                        gap: "0.125rem",
-                        fontSize: "0.65rem",
-                        minHeight: "44px",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
                       }}
+                      title={tool.title}
                     >
                       {tool.icon}
-                      {tool.label}
                     </button>
                   ))}
                 </div>
 
+                {/* Color & History Row - Updated with vertical color slider */}
                 <div
                   style={{
-                    marginBottom: "0.75rem",
-                    padding: "0.5rem",
-                    backgroundColor: "#374151",
-                    borderRadius: "6px",
+                    backgroundColor: "rgba(0, 0, 0, 0.7)",
+                    backdropFilter: "blur(10px)",
+                    borderRadius: "50px",
+                    padding: "0px 20px",
+                    display: "flex",
+                    gap: "16px",
+                    alignItems: "center",
+                    pointerEvents: "auto",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+                    minWidth: "300px",
+                    maxHeight: "30px",
+                    justifyContent: "space-between",
                   }}
                 >
+                  {/* Vertical Color Picker with Hue Slider */}
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: "0.5rem",
-                      marginBottom: "0.5rem",
+                      gap: "12px",
+                      flex: 1,
+                      flexDirection: "row",
+                      height: "60px",
                     }}
                   >
-                    <span
-                      style={{
-                        color: "#d1d5db",
-                        fontSize: "0.75rem",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      Color:
-                    </span>
                     <div
                       style={{
                         flex: 1,
+                        height: "100%",
                         display: "flex",
-                        gap: "0.375rem",
-                        justifyContent: "space-between",
-                        overflowX: "auto",
-                        padding: "0.125rem 0",
-                        scrollbarWidth: "none",
-                        msOverflowStyle: "none",
+                        alignItems: "center",
                       }}
                     >
-                      {[
-                        "#ff0000",
-                        "#00ff00",
-                        "#0000ff",
-                        "#ffff00",
-                        "#ff00ff",
-                        "#ffffff",
-                        "#000000",
-                      ].map((color) => (
-                        <button
-                          key={color}
-                          onClick={() => setDrawColor(color)}
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "20%",
+                          position: "relative",
+                          display: "flex",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <input
+                          type="range"
+                          min="0"
+                          max="360"
+                          value={hueValue}
+                          onChange={(e) => {
+                            const hue = parseInt(e.target.value);
+                            setHueValue(hue);
+                            setDrawColor(`hsl(${hue}, 100%, 50%)`);
+                          }}
                           style={{
-                            width: "22px",
-                            height: "22px",
-                            backgroundColor: color,
-                            border:
-                              drawColor === color
-                                ? "2px solid #10b981"
-                                : "1px solid #4b5563",
-                            borderRadius: "50%",
-                            cursor: "pointer",
-                            flexShrink: 0,
+                            width: "100%",
+                            height: "6px",
+                            borderRadius: "3px",
+                            background:
+                              "linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)",
+                            outline: "none",
+                            WebkitAppearance: "none",
+                            appearance: "none",
+                            transform: "rotate(0deg)", // Keep it horizontal for better usability
                           }}
                         />
-                      ))}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "0.5rem",
-                  }}
-                >
-                  <button
-                    onClick={handleUndo}
-                    disabled={historyStep <= 0}
-                    style={{
-                      flex: 1,
-                      padding: "0.5rem",
-                      backgroundColor: historyStep <= 0 ? "#4b5563" : "#374151",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "6px",
-                      cursor: historyStep <= 0 ? "not-allowed" : "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.375rem",
-                      fontSize: "0.75rem",
-                      opacity: historyStep <= 0 ? 0.5 : 1,
-                    }}
-                  >
-                    <MdUndo size={14} />
-                    Undo
-                  </button>
-
-                  <button
-                    onClick={handleRedo}
-                    disabled={historyStep >= drawHistory.length - 1}
-                    style={{
-                      flex: 1,
-                      padding: "0.5rem",
-                      backgroundColor:
-                        historyStep >= drawHistory.length - 1
-                          ? "#4b5563"
-                          : "#374151",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "6px",
-                      cursor:
-                        historyStep >= drawHistory.length - 1
-                          ? "not-allowed"
-                          : "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.375rem",
-                      fontSize: "0.75rem",
-                      opacity: historyStep >= drawHistory.length - 1 ? 0.5 : 1,
-                    }}
-                  >
-                    <MdRedo size={14} />
-                    Redo
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Filter Section */}
-            {editorMode === "filter" && (
-              <div
-                style={{
-                  backgroundColor: "#1f2937",
-                  borderRadius: "8px",
-                  padding: "0.75rem",
-                  marginBottom: "0.75rem",
-                }}
-              >
-                <div>
+                  {/* Undo/Redo buttons */}
                   <div
                     style={{
                       display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: "0.375rem",
+                      gap: "8px",
+                      flexShrink: 0,
                     }}
                   >
-                    <span style={{ color: "#d1d5db", fontSize: "0.75rem" }}>
-                      Brightness
-                    </span>
-                    <span
+                    <button
+                      onClick={handleUndo}
+                      disabled={historyStep <= 0}
                       style={{
+                        width: "30px",
+                        height: "30px",
+                        borderRadius: "50%",
+                        backgroundColor:
+                          historyStep <= 0
+                            ? "rgba(255, 255, 255, 0.05)"
+                            : "rgba(255, 255, 255, 0.1)",
                         color: "white",
-                        fontSize: "0.75rem",
-                        fontWeight: "600",
+                        border: "none",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: historyStep <= 0 ? "not-allowed" : "pointer",
+                        fontSize: "20px",
+                        opacity: historyStep <= 0 ? 0.5 : 1,
+                        transition: "all 0.2s ease",
                       }}
+                      title="Undo"
                     >
-                      {brightness}%
-                    </span>
+                      <MdUndo />
+                    </button>
+
+                    <button
+                      onClick={handleRedo}
+                      disabled={historyStep >= drawHistory.length - 1}
+                      style={{
+                        width: "30px",
+                        height: "30px",
+                        borderRadius: "50%",
+                        backgroundColor:
+                          historyStep >= drawHistory.length - 1
+                            ? "rgba(255, 255, 255, 0.05)"
+                            : "rgba(255, 255, 255, 0.1)",
+                        color: "white",
+                        border: "none",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor:
+                          historyStep >= drawHistory.length - 1
+                            ? "not-allowed"
+                            : "pointer",
+                        fontSize: "20px",
+                        opacity:
+                          historyStep >= drawHistory.length - 1 ? 0.5 : 1,
+                        transition: "all 0.2s ease",
+                      }}
+                      title="Redo"
+                    >
+                      <MdRedo />
+                    </button>
                   </div>
-                  <input
-                    type="range"
-                    min="50"
-                    max="150"
-                    value={brightness}
-                    onChange={(e) => setBrightness(parseInt(e.target.value))}
-                    style={{
-                      width: "100%",
-                      height: "6px",
-                      WebkitAppearance: "none",
-                      appearance: "none",
-                      background:
-                        "linear-gradient(90deg, #10b981 0%, #374151 100%)",
-                      borderRadius: "3px",
-                      outline: "none",
-                      marginBottom: "0.25rem",
-                    }}
-                  />
                 </div>
               </div>
             )}
 
-            {/* Rotate Buttons */}
+            {/* Filter Controls Panel */}
+            {editorMode === "filter" && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: window.innerWidth < 768 ? "80px" : "100px",
+                  left: "0",
+                  right: "0",
+                  zIndex: "30",
+                  display: "flex",
+                  justifyContent: "center",
+                  pointerEvents: "none",
+                }}
+              >
+                <div
+                  style={{
+                    backgroundColor: "rgba(0, 0, 0, 0.7)",
+                    backdropFilter: "blur(10px)",
+                    borderRadius: "25px",
+                    padding: "16px 24px",
+                    display: "flex",
+                    gap: "16px",
+                    alignItems: "center",
+                    pointerEvents: "auto",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+                    minWidth: "300px",
+                  }}
+                >
+                  {/* Brightness Icon */}
+                  <MdFilterAlt
+                    size={24}
+                    style={{
+                      color: "white",
+                      flexShrink: 0,
+                    }}
+                  />
+
+                  {/* Brightness Slider */}
+                  <div style={{ flex: 1 }}>
+                    <input
+                      type="range"
+                      min="50"
+                      max="150"
+                      value={brightness}
+                      onChange={(e) => setBrightness(parseInt(e.target.value))}
+                      style={{
+                        width: "100%",
+                        height: "6px",
+                        borderRadius: "3px",
+                        background: `linear-gradient(90deg, #10b981 0%, #10b981 ${brightness - 50}%, rgba(255, 255, 255, 0.3) ${brightness - 50}%, rgba(255, 255, 255, 0.3) 100%)`,
+                        outline: "none",
+                        WebkitAppearance: "none",
+                        appearance: "none",
+                      }}
+                    />
+                  </div>
+
+                  {/* Brightness Value */}
+                  <span
+                    style={{
+                      color: "white",
+                      fontSize: "14px",
+                      fontWeight: "600",
+                      minWidth: "40px",
+                      textAlign: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {brightness}%
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Crop Controls (when in crop mode) */}
+
+            {/* Bottom Action Buttons - Only show when NOT in draw mode */}
             <div
               style={{
+                position: "absolute",
+                bottom: "20px",
+                left: "0",
+                right: "0",
+                zIndex: "30",
                 display: "flex",
-                gap: "0.5rem",
-                marginBottom: "0.75rem",
+                justifyContent: "center",
+                gap: "16px",
+                pointerEvents: "none",
               }}
             >
-              <button
-                onClick={() => handleRotate(-90)}
-                style={{
-                  flex: 1,
-                  padding: "0.625rem",
-                  backgroundColor: "#374151",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "0.375rem",
-                  fontSize: "0.75rem",
-                }}
-              >
-                <MdRotateLeft size={14} />
-                Rotate Left
-              </button>
-
-              <button
-                onClick={() => handleRotate(90)}
-                style={{
-                  flex: 1,
-                  padding: "0.625rem",
-                  backgroundColor: "#374151",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "0.375rem",
-                  fontSize: "0.75rem",
-                }}
-              >
-                <MdRotateRight size={14} />
-                Rotate Right
-              </button>
-            </div>
-
-            {/* Save & Cancel Buttons */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.5rem",
-              }}
-            >
-              <button
-                onClick={handleSaveImage}
-                style={{
-                  padding: "0.75rem",
-                  background:
-                    "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  fontWeight: "600",
-                  fontSize: "0.875rem",
-                  cursor: "pointer",
-                }}
-              >
-                ✓ Save Image
-              </button>
-
+              {/* Cancel Button (Cross Icon) */}
               <button
                 onClick={() => {
                   setIsCropping(false);
                   resetStates();
                 }}
                 style={{
-                  padding: "0.75rem",
-                  backgroundColor: "#4b5563",
+                  width: "60px",
+                  height: "60px",
+                  borderRadius: "50%",
+                  backgroundColor: "rgba(239, 68, 68, 0.9)",
                   color: "white",
                   border: "none",
-                  borderRadius: "8px",
-                  fontWeight: "600",
-                  fontSize: "0.875rem",
                   cursor: "pointer",
+                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+                  pointerEvents: "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backdropFilter: "blur(10px)",
+                  transition: "all 0.2s ease",
                 }}
+                title="Cancel"
               >
-                Cancel
+                <MdClose size={28} />
+              </button>
+
+              {/* Save/Done Button (Check/Download Icon) */}
+              <button
+                onClick={() => {
+                  if (editorMode === "filter") {
+                    // If in filter mode, go back to crop mode
+                    setEditorMode("crop");
+                  } else {
+                    // If in crop mode, save the image
+                    handleSaveImage();
+                  }
+                }}
+                style={{
+                  width: "60px",
+                  height: "60px",
+                  borderRadius: "50%",
+                  background:
+                    "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                  color: "white",
+                  border: "none",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+                  pointerEvents: "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backdropFilter: "blur(10px)",
+                  transition: "all 0.2s ease",
+                }}
+                title={editorMode === "filter" ? "Done" : "Save"}
+              >
+                {editorMode === "filter" ? (
+                  <MdCheck size={28} />
+                ) : (
+                  <MdDownload size={28} />
+                )}
               </button>
             </div>
-          </div>
+          </>
         )}
-
         {/* Footer Buttons */}
         {!isCropping && !processingImage && mode === "photo" && !preview && (
           <div
@@ -3157,30 +3276,7 @@ const [fontSize, setFontSize] = useState(32);
                 flexDirection: "column",
                 gap: "0.75rem",
               }}
-            >
-              <button
-                onClick={() => openNativeCamera("photo")}
-                style={{
-                  background: "#374151",
-                  color: "white",
-                  padding: "1rem",
-                  borderRadius: "8px",
-                  fontWeight: "600",
-                  fontSize: "0.9rem",
-                  border: "none",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "0.5rem",
-                  textAlign: "center",
-                  width: "100%",
-                }}
-              >
-                <MdFileUpload size={20} />
-                <span>Use Native Camera</span>
-              </button>
-            </div>
+            ></div>
           </div>
         )}
 
